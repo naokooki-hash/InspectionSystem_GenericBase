@@ -1,3 +1,6 @@
+using System;
+using System.Windows.Forms;
+
 namespace _20260224SolderInspec
 {
     internal static class Program
@@ -8,10 +11,9 @@ namespace _20260224SolderInspec
         [STAThread]
         static void Main()
         {
+            // プラットフォームエラー回避
             AppContext.SetSwitch("System.Drawing.EnableUnixSupport", true);
 
-            // To customize application configuration such as set high DPI settings or default font,
-            // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
             Application.Run(new Form1());
         }
