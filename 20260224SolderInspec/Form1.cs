@@ -373,7 +373,7 @@ namespace _20260224SolderInspec
             {
                 if (_appSettings.TriggerMode == "Plc")
                 {
-                    // ★追加: 繋がっていなければ、裏側でこっそり接続を試みる
+                    // 繋がっていなければ、裏側でこっそり接続を試みる
                     if (!_plc.IsConnected)
                     {
                         await Task.Run(() => _plc.Connect());
@@ -427,6 +427,12 @@ namespace _20260224SolderInspec
 
                     // 輝度は常に計算(UI表示用)
                     double b = _measurement.CalculateBrightness(frame, _roi);
+
+                    // --- ★追加：デバッグタブを開いている時は毎フレーム二値化画像を更新！ ---
+                    if (isDebug)
+                    {
+                        _measurement.UpdateDebugImageRealtime(frame, _saveRoi);
+                    }
 
                     // 手動テスト要求があれば即座に検査
                     if (_requestManualTest)

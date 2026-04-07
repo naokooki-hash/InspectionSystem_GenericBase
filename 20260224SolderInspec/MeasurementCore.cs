@@ -55,6 +55,34 @@ namespace _20260224SolderInspec
             }
         }
 
+        // --- ★新規追加：毎フレーム呼ばれるリアルタイム二値化メソッド ---
+        public void UpdateDebugImageRealtime(Mat frame, CvRect debugRoi)
+        {
+            using (Mat gray = new Mat())
+            {
+                if (frame.Channels() == 3) Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
+                else frame.CopyTo(gray);
+
+                CvRect safeDebugRoi = debugRoi & new CvRect(0, 0, gray.Width, gray.Height);
+                if (safeDebugRoi.Width > 0 && safeDebugRoi.Height > 0)
+                {
+                    using (Mat debugMat = new Mat(gray, safeDebugRoi))
+                    using (Mat blurred = new Mat())
+                    using (Mat bin = new Mat())
+                    {
+                        Cv2.GaussianBlur(debugMat, blurred, new CvSize(5, 5), 0);
+                        // リアルタイムに現在の HoleThreshold で二値化
+                        Cv2.Threshold(blurred, bin, HoleThreshold, 255, ThresholdTypes.BinaryInv);
+
+                        lock (_imageLock)
+                        {
+                            bin.CopyTo(_lastBinaryHole);
+                        }
+                    }
+                }
+            }
+        }
+
         private double _lastXOffsetMm, _lastAngle;
         private int _lastResult = 0;
         private bool _isOffsetOk = false, _isAngleOk = false, _hasValidData = false;
@@ -95,7 +123,6 @@ namespace _20260224SolderInspec
             }
         }
 
-        // ★引数に debugRoi (Save ROI) を追加
         public int Inspect(Mat frame, CvRect debugRoi, bool isDebugMode)
         {
             _hasValidData = false;
@@ -106,22 +133,7 @@ namespace _20260224SolderInspec
                     if (frame.Channels() == 3) Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
                     else frame.CopyTo(gray);
 
-                    // ★デバッグモード時：画像確認用に「画像保存設定のエリア(Save ROI)」の二値化画像を生成
-                    if (isDebugMode)
-                    {
-                        CvRect safeDebugRoi = debugRoi & new CvRect(0, 0, gray.Width, gray.Height);
-                        if (safeDebugRoi.Width > 0 && safeDebugRoi.Height > 0)
-                        {
-                            using (Mat debugMat = new Mat(gray, safeDebugRoi))
-                            using (Mat blurred = new Mat())
-                            using (Mat bin = new Mat())
-                            {
-                                Cv2.GaussianBlur(debugMat, blurred, new CvSize(5, 5), 0);
-                                Cv2.Threshold(blurred, bin, HoleThreshold, 255, ThresholdTypes.BinaryInv);
-                                lock (_imageLock) { bin.CopyTo(_lastBinaryHole); }
-                            }
-                        }
-                    }
+                    // ※デバッグモード時の画像生成は UpdateDebugImageRealtime に移譲したため、ここから削除しました。
 
                     // 1. エッジ距離チェック
                     _jigEdgeDetected = false;
