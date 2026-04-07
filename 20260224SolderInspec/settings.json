@@ -3,6 +3,6 @@
     "PlcPort": 5002,
     "WriteDeviceAddress": 100,
     "ReadDeviceAddress": 101,
-    "TriggerMode": "Plc",
+    "TriggerMode": "Visual",
     "InspectionIntervalMs": 500
 }

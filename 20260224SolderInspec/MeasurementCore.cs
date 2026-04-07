@@ -25,14 +25,16 @@ namespace _20260224SolderInspec
 
         public double PixelToMmRatio { get; set; } = 0.05;
         public double LastHoleDistancePx { get; private set; } = 0.0;
-        public int LastBtmWidthPx { get; private set; } = 0;
 
         public CvRect JigLeftRoi { get; set; } = new CvRect(280, 315, 200, 200);
         public CvRect JigRightRoi { get; set; } = new CvRect(820, 315, 200, 200);
-        public double TargetJigDistancePx { get; set; } = 0.0;
-        public double JigTolerancePx { get; set; } = 15.0;
+
+        // ★UI改修: px から mm に変更
+        public double TargetJigDistanceMm { get; set; } = 40.0;
+        public double JigToleranceMm { get; set; } = 1.5;
 
         public bool IsJigOk { get; private set; } = false;
+        public double LastJigDistanceMm { get; private set; } = 0.0; // 画面表示用
 
         private int _jigLeftEdgeX = 0, _jigRightEdgeX = 0;
         private bool _jigEdgeDetected = false;
@@ -55,7 +57,6 @@ namespace _20260224SolderInspec
             }
         }
 
-        // --- ★新規追加：毎フレーム呼ばれるリアルタイム二値化メソッド ---
         public void UpdateDebugImageRealtime(Mat frame, CvRect debugRoi)
         {
             using (Mat gray = new Mat())
@@ -71,13 +72,8 @@ namespace _20260224SolderInspec
                     using (Mat bin = new Mat())
                     {
                         Cv2.GaussianBlur(debugMat, blurred, new CvSize(5, 5), 0);
-                        // リアルタイムに現在の HoleThreshold で二値化
                         Cv2.Threshold(blurred, bin, HoleThreshold, 255, ThresholdTypes.BinaryInv);
-
-                        lock (_imageLock)
-                        {
-                            bin.CopyTo(_lastBinaryHole);
-                        }
+                        lock (_imageLock) { bin.CopyTo(_lastBinaryHole); }
                     }
                 }
             }
@@ -95,7 +91,8 @@ namespace _20260224SolderInspec
             using (Mat roiMat = new Mat(frame, safeRoi)) { return Cv2.Mean(roiMat).Val0; }
         }
 
-        private bool DetectJigEdge(Mat gray, CvRect roi, bool isLeft, out int edgeX)
+        // ★改修: 輪郭の端ではなく「重心(Moments)」を計算してR形状のブレを吸収する
+        private bool DetectJigEdge(Mat gray, CvRect roi, out int edgeX)
         {
             edgeX = 0;
             CvRect safeRoi = roi & new CvRect(0, 0, gray.Width, gray.Height);
@@ -112,14 +109,15 @@ namespace _20260224SolderInspec
                 if (contours.Length == 0) return false;
 
                 var largestContour = contours.OrderByDescending(c => Cv2.ContourArea(c)).First();
-                var rect = Cv2.BoundingRect(largestContour);
 
-                if (rect.Width < 5 || rect.Height < 5) return false;
-
-                if (isLeft) edgeX = safeRoi.X + rect.Right;
-                else edgeX = safeRoi.X + rect.Left;
-
-                return true;
+                // 重心計算
+                var m = Cv2.Moments(largestContour);
+                if (m.M00 > 0)
+                {
+                    edgeX = safeRoi.X + (int)(m.M10 / m.M00);
+                    return true;
+                }
+                return false;
             }
         }
 
@@ -133,19 +131,23 @@ namespace _20260224SolderInspec
                     if (frame.Channels() == 3) Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
                     else frame.CopyTo(gray);
 
-                    // ※デバッグモード時の画像生成は UpdateDebugImageRealtime に移譲したため、ここから削除しました。
-
-                    // 1. エッジ距離チェック
+                    // 1. エッジ距離チェック (重心ベース)
                     _jigEdgeDetected = false;
                     IsJigOk = false;
 
-                    if (DetectJigEdge(gray, JigLeftRoi, true, out _jigLeftEdgeX) &&
-                        DetectJigEdge(gray, JigRightRoi, false, out _jigRightEdgeX))
+                    if (DetectJigEdge(gray, JigLeftRoi, out _jigLeftEdgeX) &&
+                        DetectJigEdge(gray, JigRightRoi, out _jigRightEdgeX))
                     {
                         _jigEdgeDetected = true;
-                        double d = Math.Abs(_jigRightEdgeX - _jigLeftEdgeX);
-                        if (TargetJigDistancePx <= 0) TargetJigDistancePx = d;
-                        IsJigOk = (Math.Abs(d - TargetJigDistancePx) <= JigTolerancePx);
+
+                        // ピクセル距離を計算し、mmに変換
+                        double distancePx = Math.Abs(_jigRightEdgeX - _jigLeftEdgeX);
+                        LastJigDistanceMm = distancePx * PixelToMmRatio;
+
+                        if (TargetJigDistanceMm <= 0) TargetJigDistanceMm = LastJigDistanceMm; // 初回安全装置
+
+                        // ミリ単位での判定
+                        IsJigOk = (Math.Abs(LastJigDistanceMm - TargetJigDistanceMm) <= JigToleranceMm);
                     }
 
                     // 2. 穴検出
@@ -253,7 +255,9 @@ namespace _20260224SolderInspec
                 int midY = (JigLeftRoi.Y + JigLeftRoi.Height / 2 + JigRightRoi.Y + JigRightRoi.Height / 2) / 2;
                 Cv2.Line(dispMat, new CvPoint(_jigLeftEdgeX, midY), new CvPoint(_jigRightEdgeX, midY), edgeCol, 1, LineTypes.AntiAlias);
 
-                Cv2.PutText(dispMat, IsJigOk ? "EDGE OK" : "EDGE ERROR", new CvPoint(_jigLeftEdgeX, JigLeftRoi.Y - 10), HersheyFonts.HersheySimplex, 0.8, edgeCol, 2);
+                // ★寸法を画面に表示して確認しやすくする
+                string edgeText = IsJigOk ? $"EDGE OK ({LastJigDistanceMm:F1}mm)" : $"EDGE ERROR ({LastJigDistanceMm:F1}mm)";
+                Cv2.PutText(dispMat, edgeText, new CvPoint(_jigLeftEdgeX, JigLeftRoi.Y - 10), HersheyFonts.HersheySimplex, 0.8, edgeCol, 2);
             }
         }
     }
