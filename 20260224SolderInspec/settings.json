@@ -1,0 +1,8 @@
+﻿{
+    "PlcIpAddress": "192.168.0.19",
+    "PlcPort": 5002,
+    "WriteDeviceAddress": 100,
+    "ReadDeviceAddress": 101,
+    "TriggerMode": "Plc",
+    "InspectionIntervalMs": 500
+}

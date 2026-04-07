@@ -1,74 +1,147 @@
 using System;
 using System.Net.Sockets;
-using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace _20260224SolderInspec
 {
-    public class PlcCommunicator : IDisposable
+    public class PlcCommunicator
     {
         private TcpClient _client;
-        private string _ipAddress = "192.168.3.250"; // ※実際のPLCのIPアドレスに合わせてください
-        private int _port = 5002;                    // SLMP用ポート番号
+        private NetworkStream _stream;
+        private AppSettings _settings;
 
-        // 接続状態確認
         public bool IsConnected => _client != null && _client.Connected;
 
-        public async Task<bool> ConnectAsync()
+        public PlcCommunicator(AppSettings settings)
+        {
+            _settings = settings;
+        }
+
+        // --- 接続・切断 ---
+        public bool Connect()
         {
             try
             {
+                if (IsConnected) return true;
+
                 _client = new TcpClient();
-                await _client.ConnectAsync(_ipAddress, _port);
+                // タイムアウト設定 (ミリ秒)
+                _client.ReceiveTimeout = 2000;
+                _client.SendTimeout = 2000;
+
+                _client.Connect(_settings.PlcIpAddress, _settings.PlcPort);
+                _stream = _client.GetStream();
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"PLC接続失敗: {ex.Message}");
+                Console.WriteLine($"PLC接続エラー: {ex.Message}");
                 return false;
             }
         }
 
-        public void SendResult(int result)
+        public void Disconnect()
         {
-            if (!IsConnected) return;
-
             try
             {
-                // MCプロトコル 3Eフレーム 書き込みコマンド (D100へ1点書き込み)
-                byte[] request = new byte[] {
-                    0x50, 0x00,         // サブヘッダ (要求)
-                    0x00,               // ネットワーク番号
-                    0xFF,               // PC番号
-                    0xFF, 0x03,         // 要求先ユニットI/O番号
-                    0x00,               // 要求先局番号
-                    0x0C, 0x00,         // 要求データ長 (これ以降のバイト数: 12バイト)
-                    0x10, 0x00,         // CPU監視タイマ
-                    0x01, 0x14,         // コマンド (一括書込み)
-                    0x00, 0x00,         // サブコマンド (ワード単位)
-                    0x64, 0x00, 0x00,   // 先頭デバイス番号 (D100 = 0x64)
-                    0xA8,               // デバイスコード (D = 0xA8)
-                    0x01, 0x00,         // 書込み点数 (1点)
-                    (byte)(result & 0xFF), (byte)((result >> 8) & 0xFF) // 書込みデータ
-                };
-
-                NetworkStream stream = _client.GetStream();
-                stream.Write(request, 0, request.Length);
-
-                // 応答の受信（バッファをクリアするため）
-                byte[] response = new byte[256];
-                stream.Read(response, 0, response.Length);
+                _stream?.Close();
+                _client?.Close();
             }
-            catch (Exception ex)
+            catch { }
+            finally
             {
-                Debug.WriteLine($"PLC送信エラー: {ex.Message}");
+                _stream = null;
+                _client = null;
             }
         }
 
-        public void Dispose()
+        // --- 既存の互換性用メソッド (Form1から呼ばれることを想定) ---
+        public bool SendResult(bool isOk)
         {
-            _client?.Close();
-            _client?.Dispose();
+            // OKなら1、NGなら2を書き込む (現場の仕様に合わせて変更可能)
+            int valueToWrite = isOk ? 1 : 2;
+            return WriteDevice(_settings.WriteDeviceAddress, valueToWrite);
+        }
+
+        // --- MCプロトコル: 一括読出し (0401) ---
+        public int ReadDevice(int deviceAddress)
+        {
+            if (!IsConnected) return -1;
+
+            try
+            {
+                // Dレジスタ (A8)
+                byte[] addressBytes = BitConverter.GetBytes(deviceAddress);
+                byte[] command = new byte[]
+                {
+                    0x50, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, // サブヘッダ等
+                    0x0C, 0x00,                               // データ長 (12バイト)
+                    0x10, 0x00,                               // 監視タイマ
+                    0x01, 0x04,                               // コマンド (0401:一括読出し)
+                    0x00, 0x00,                               // サブコマンド
+                    addressBytes[0], addressBytes[1], 0x00,   // 先頭デバイス番号 (リトルエンディアン)
+                    0xA8,                                     // デバイスコード (Dレジスタ)
+                    0x01, 0x00                                // デバイス点数 (1点)
+                };
+
+                _stream.Write(command, 0, command.Length);
+
+                byte[] response = new byte[13];
+                int bytesRead = _stream.Read(response, 0, response.Length);
+
+                if (bytesRead >= 13 && response[9] == 0x00 && response[10] == 0x00) // 終了コード0 (正常)
+                {
+                    // 11, 12バイト目が読み取った値 (リトルエンディアン)
+                    return BitConverter.ToInt16(response, 11);
+                }
+                return -1;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"読出しエラー: {ex.Message}");
+                Disconnect(); // エラー時は切断して再接続を促す
+                return -1;
+            }
+        }
+
+        // --- MCプロトコル: 一括書込み (1401) ---
+        public bool WriteDevice(int deviceAddress, int writeValue)
+        {
+            if (!IsConnected) return false;
+
+            try
+            {
+                byte[] addressBytes = BitConverter.GetBytes(deviceAddress);
+                byte[] valueBytes = BitConverter.GetBytes((short)writeValue);
+
+                byte[] command = new byte[]
+                {
+                    0x50, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, // サブヘッダ等
+                    0x0E, 0x00,                               // データ長 (14バイト)
+                    0x10, 0x00,                               // 監視タイマ
+                    0x01, 0x14,                               // コマンド (1401:一括書込み)
+                    0x00, 0x00,                               // サブコマンド
+                    addressBytes[0], addressBytes[1], 0x00,   // 先頭デバイス番号
+                    0xA8,                                     // デバイスコード (Dレジスタ)
+                    0x01, 0x00,                               // デバイス点数 (1点)
+                    valueBytes[0], valueBytes[1]              // 書き込むデータ
+                };
+
+                _stream.Write(command, 0, command.Length);
+
+                byte[] response = new byte[11];
+                int bytesRead = _stream.Read(response, 0, response.Length);
+
+                // 終了コードが 0x00 0x00 なら成功
+                return (bytesRead >= 11 && response[9] == 0x00 && response[10] == 0x00);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"書込みエラー: {ex.Message}");
+                Disconnect();
+                return false;
+            }
         }
     }
 }
