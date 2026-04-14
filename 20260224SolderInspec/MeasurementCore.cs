@@ -29,7 +29,6 @@ namespace _20260224SolderInspec
         public CvRect JigLeftRoi { get; set; } = new CvRect(280, 315, 200, 200);
         public CvRect JigRightRoi { get; set; } = new CvRect(820, 315, 200, 200);
 
-        // mm に変更
         public double TargetJigDistanceMm { get; set; } = 40.0;
         public double JigToleranceMm { get; set; } = 1.5;
 
@@ -91,8 +90,8 @@ namespace _20260224SolderInspec
             using (Mat roiMat = new Mat(frame, safeRoi)) { return Cv2.Mean(roiMat).Val0; }
         }
 
-        // 輪郭の端ではなく「重心(Moments)」を計算してR形状のブレを吸収
-        private bool DetectJigEdge(Mat gray, CvRect roi, out int edgeX)
+        // ★青矢印対応：重心を廃止し、元の「一番外側のピクセル(BoundingRectの端点)」を測るロジックに復元
+        private bool DetectJigEdge(Mat gray, CvRect roi, bool isLeft, out int edgeX)
         {
             edgeX = 0;
             CvRect safeRoi = roi & new CvRect(0, 0, gray.Width, gray.Height);
@@ -110,14 +109,16 @@ namespace _20260224SolderInspec
 
                 var largestContour = contours.OrderByDescending(c => Cv2.ContourArea(c)).First();
 
-                // 重心計算
-                var m = Cv2.Moments(largestContour);
-                if (m.M00 > 0)
-                {
-                    edgeX = safeRoi.X + (int)(m.M10 / m.M00);
-                    return true;
-                }
-                return false;
+                // 一番外側の四角形（BoundingRect）を取得
+                var rect = Cv2.BoundingRect(largestContour);
+
+                if (rect.Width < 5 || rect.Height < 5) return false;
+
+                // 左側のROIなら塊の右端、右側のROIなら塊の左端を取得
+                if (isLeft) edgeX = safeRoi.X + rect.Right;
+                else edgeX = safeRoi.X + rect.Left;
+
+                return true;
             }
         }
 
@@ -131,12 +132,13 @@ namespace _20260224SolderInspec
                     if (frame.Channels() == 3) Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
                     else frame.CopyTo(gray);
 
-                    // 1. エッジ距離チェック (重心ベース)
+                    // 1. エッジ距離チェック (元の直線ロジック)
                     _jigEdgeDetected = false;
                     IsJigOk = false;
 
-                    if (DetectJigEdge(gray, JigLeftRoi, out _jigLeftEdgeX) &&
-                        DetectJigEdge(gray, JigRightRoi, out _jigRightEdgeX))
+                    // isLeft のフラグを渡して呼び出す
+                    if (DetectJigEdge(gray, JigLeftRoi, true, out _jigLeftEdgeX) &&
+                        DetectJigEdge(gray, JigRightRoi, false, out _jigRightEdgeX))
                     {
                         _jigEdgeDetected = true;
 
@@ -168,8 +170,19 @@ namespace _20260224SolderInspec
                                 double perimeter = Cv2.ArcLength(c, true);
                                 if (perimeter == 0) continue;
                                 if ((4 * Math.PI * area) / (perimeter * perimeter) < MinCircularity) continue;
-                                var m = Cv2.Moments(c);
-                                if (m.M00 > 0) _detectedHoles.Add(new CvPoint((int)(m.M10 / m.M00) + safeHolesRoi.X, (int)(m.M01 / m.M00) + safeHolesRoi.Y));
+
+                                // ★赤矢印対応：重心(Moments)をやめ、楕円フィッティング(FitEllipse)で円の中心を求める
+                                if (c.Length >= 5) // FitEllipseは計算に5点以上必要
+                                {
+                                    var ellipse = Cv2.FitEllipse(c);
+                                    _detectedHoles.Add(new CvPoint((int)ellipse.Center.X + safeHolesRoi.X, (int)ellipse.Center.Y + safeHolesRoi.Y));
+                                }
+                                else
+                                {
+                                    // 万が一輪郭が小さすぎる場合の保険
+                                    var m = Cv2.Moments(c);
+                                    if (m.M00 > 0) _detectedHoles.Add(new CvPoint((int)(m.M10 / m.M00) + safeHolesRoi.X, (int)(m.M01 / m.M00) + safeHolesRoi.Y));
+                                }
                             }
                         }
                     }
