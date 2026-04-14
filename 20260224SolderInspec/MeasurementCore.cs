@@ -20,7 +20,11 @@ namespace _20260224SolderInspec
         public CvRect HolesRoi { get; set; } = new CvRect(250, 350, 600, 200);
         public int MinHoleArea { get; set; } = 300;
         public int MaxHoleArea { get; set; } = 3000;
-        public int HoleThreshold { get; set; } = 100;
+
+        public int EdgeThreshold { get; set; } = 12;
+        public int HoleThreshold { get; set; } = 51;
+        public int SplitBoundaryY { get; set; } = 570;
+
         public double MinCircularity { get; set; } = 0.7;
 
         public double PixelToMmRatio { get; set; } = 0.05;
@@ -38,9 +42,12 @@ namespace _20260224SolderInspec
         private int _jigLeftEdgeX = 0, _jigRightEdgeX = 0;
         private bool _jigEdgeDetected = false;
 
-        private RotatedRect _btmRect;
         private CvPoint _topCenter, _btmCenter;
         private List<CvPoint> _detectedHoles = new List<CvPoint>();
+
+        // ★修正: Point2f から CvPoint (int) に変更して型の衝突を回避
+        private CvPoint _btmAxisPt1, _btmAxisPt2;
+        private CvPoint _projectedBtm;
 
         private readonly object _imageLock = new object();
         private Mat _lastBinaryHole = new Mat();
@@ -68,19 +75,46 @@ namespace _20260224SolderInspec
                 {
                     using (Mat debugMat = new Mat(gray, safeDebugRoi))
                     using (Mat blurred = new Mat())
-                    using (Mat bin = new Mat())
                     {
                         Cv2.GaussianBlur(debugMat, blurred, new CvSize(5, 5), 0);
-                        Cv2.Threshold(blurred, bin, HoleThreshold, 255, ThresholdTypes.BinaryInv);
-                        lock (_imageLock) { bin.CopyTo(_lastBinaryHole); }
+
+                        using (Mat bin = new Mat(blurred.Size(), MatType.CV_8UC1, new Scalar(0)))
+                        {
+                            int splitY = SplitBoundaryY - safeDebugRoi.Y;
+                            if (splitY < 0) splitY = 0;
+                            if (splitY > blurred.Height) splitY = blurred.Height;
+
+                            if (splitY > 0)
+                            {
+                                CvRect topRoi = new CvRect(0, 0, blurred.Width, splitY);
+                                using (Mat topMat = new Mat(blurred, topRoi))
+                                using (Mat topBin = new Mat(bin, topRoi))
+                                {
+                                    Cv2.Threshold(topMat, topBin, EdgeThreshold, 255, ThresholdTypes.BinaryInv);
+                                }
+                            }
+
+                            if (splitY < blurred.Height)
+                            {
+                                CvRect btmRoi = new CvRect(0, splitY, blurred.Width, blurred.Height - splitY);
+                                using (Mat btmMat = new Mat(blurred, btmRoi))
+                                using (Mat btmBin = new Mat(bin, btmRoi))
+                                {
+                                    Cv2.Threshold(btmMat, btmBin, HoleThreshold, 255, ThresholdTypes.BinaryInv);
+                                }
+                            }
+
+                            if (splitY > 0 && splitY < blurred.Height)
+                            {
+                                Cv2.Line(bin, new CvPoint(0, splitY), new CvPoint(bin.Width, splitY), Scalar.Gray, 2);
+                            }
+
+                            lock (_imageLock) { bin.CopyTo(_lastBinaryHole); }
+                        }
                     }
                 }
             }
         }
-
-        private double _lastXOffsetMm, _lastAngle;
-        private int _lastResult = 0;
-        private bool _isOffsetOk = false, _isAngleOk = false, _hasValidData = false;
 
         public double CalculateBrightness(Mat frame, CvRect roi)
         {
@@ -90,7 +124,6 @@ namespace _20260224SolderInspec
             using (Mat roiMat = new Mat(frame, safeRoi)) { return Cv2.Mean(roiMat).Val0; }
         }
 
-        // ★青矢印対応：重心を廃止し、元の「一番外側のピクセル(BoundingRectの端点)」を測るロジックに復元
         private bool DetectJigEdge(Mat gray, CvRect roi, bool isLeft, out int edgeX)
         {
             edgeX = 0;
@@ -102,25 +135,26 @@ namespace _20260224SolderInspec
             using (Mat bin = new Mat())
             {
                 Cv2.GaussianBlur(roiMat, blurred, new CvSize(3, 3), 0);
-                Cv2.Threshold(blurred, bin, 0, 255, ThresholdTypes.Otsu | ThresholdTypes.Binary);
+                Cv2.Threshold(blurred, bin, EdgeThreshold, 255, ThresholdTypes.Binary);
 
                 Cv2.FindContours(bin, out CvPoint[][] contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
                 if (contours.Length == 0) return false;
 
                 var largestContour = contours.OrderByDescending(c => Cv2.ContourArea(c)).First();
-
-                // 一番外側の四角形（BoundingRect）を取得
                 var rect = Cv2.BoundingRect(largestContour);
 
                 if (rect.Width < 5 || rect.Height < 5) return false;
 
-                // 左側のROIなら塊の右端、右側のROIなら塊の左端を取得
                 if (isLeft) edgeX = safeRoi.X + rect.Right;
                 else edgeX = safeRoi.X + rect.Left;
 
                 return true;
             }
         }
+
+        private double _lastXOffsetMm, _lastAngle;
+        private int _lastResult = 0;
+        private bool _isOffsetOk = false, _isAngleOk = false, _hasValidData = false;
 
         public int Inspect(Mat frame, CvRect debugRoi, bool isDebugMode)
         {
@@ -132,25 +166,21 @@ namespace _20260224SolderInspec
                     if (frame.Channels() == 3) Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
                     else frame.CopyTo(gray);
 
-                    // 1. エッジ距離チェック (元の直線ロジック)
+                    // 1. 上部エッジ距離チェック
                     _jigEdgeDetected = false;
                     IsJigOk = false;
 
-                    // isLeft のフラグを渡して呼び出す
                     if (DetectJigEdge(gray, JigLeftRoi, true, out _jigLeftEdgeX) &&
                         DetectJigEdge(gray, JigRightRoi, false, out _jigRightEdgeX))
                     {
                         _jigEdgeDetected = true;
-
                         double distancePx = Math.Abs(_jigRightEdgeX - _jigLeftEdgeX);
                         LastJigDistanceMm = distancePx * PixelToMmRatio;
-
                         if (TargetJigDistanceMm <= 0) TargetJigDistanceMm = LastJigDistanceMm;
-
                         IsJigOk = (Math.Abs(LastJigDistanceMm - TargetJigDistanceMm) <= JigToleranceMm);
                     }
 
-                    // 2. 穴検出
+                    // 2. 穴検出 (基準点3の導出)
                     _detectedHoles.Clear();
                     CvRect safeHolesRoi = HolesRoi & new CvRect(0, 0, gray.Width, gray.Height);
                     if (safeHolesRoi.Width > 0 && safeHolesRoi.Height > 0)
@@ -171,15 +201,13 @@ namespace _20260224SolderInspec
                                 if (perimeter == 0) continue;
                                 if ((4 * Math.PI * area) / (perimeter * perimeter) < MinCircularity) continue;
 
-                                // ★赤矢印対応：重心(Moments)をやめ、楕円フィッティング(FitEllipse)で円の中心を求める
-                                if (c.Length >= 5) // FitEllipseは計算に5点以上必要
+                                if (c.Length >= 5)
                                 {
                                     var ellipse = Cv2.FitEllipse(c);
                                     _detectedHoles.Add(new CvPoint((int)ellipse.Center.X + safeHolesRoi.X, (int)ellipse.Center.Y + safeHolesRoi.Y));
                                 }
                                 else
                                 {
-                                    // 万が一輪郭が小さすぎる場合の保険
                                     var m = Cv2.Moments(c);
                                     if (m.M00 > 0) _detectedHoles.Add(new CvPoint((int)(m.M10 / m.M00) + safeHolesRoi.X, (int)(m.M01 / m.M00) + safeHolesRoi.Y));
                                 }
@@ -194,29 +222,79 @@ namespace _20260224SolderInspec
                     var leftHole = sorted.First(); var rightHole = sorted.Last();
 
                     _topCenter = new CvPoint((leftHole.X + rightHole.X) / 2, (leftHole.Y + rightHole.Y) / 2);
-                    _lastAngle = Math.Atan2(rightHole.Y - leftHole.Y, rightHole.X - leftHole.X) * 180.0 / Math.PI;
+
+                    // 上部(穴)の水平に対する角度
+                    double top_tilt_rad = Math.Atan2(rightHole.Y - leftHole.Y, rightHole.X - leftHole.X);
                     LastHoleDistancePx = Math.Sqrt(Math.Pow(rightHole.X - leftHole.X, 2) + Math.Pow(rightHole.Y - leftHole.Y, 2));
 
-                    // 3. 下部検出
+                    // 3. 下部検出 (図解の「1と2の中点の軸」を導出)
                     CvRect safeBtmRoi = BtmMeasureRoi & new CvRect(0, 0, gray.Width, gray.Height);
                     if (safeBtmRoi.Width > 0 && safeBtmRoi.Height > 0)
                     {
                         using (Mat btmRoiMat = new Mat(gray, safeBtmRoi))
                         using (Mat bin = new Mat())
                         {
-                            Cv2.Threshold(btmRoiMat, bin, 0, 255, ThresholdTypes.Otsu | ThresholdTypes.BinaryInv);
-                            Cv2.FindContours(bin, out CvPoint[][] bContours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
-                            if (bContours.Length == 0) return 3;
-                            var mainC = bContours.OrderByDescending(c => Cv2.ContourArea(c)).First();
-                            var m = Cv2.Moments(mainC);
-                            _btmCenter = new CvPoint((int)(m.M10 / m.M00) + safeBtmRoi.X, (int)(m.M01 / m.M00) + safeBtmRoi.Y);
-                            _btmRect = Cv2.MinAreaRect(mainC);
-                            _btmRect.Center = new Point2f(_btmCenter.X, _btmCenter.Y);
+                            Cv2.Threshold(btmRoiMat, bin, HoleThreshold, 255, ThresholdTypes.Binary);
+
+                            List<Point2f> centerPoints = new List<Point2f>();
+
+                            for (int y = 0; y < bin.Rows; y++)
+                            {
+                                int leftX = -1;
+                                for (int x = 0; x < bin.Cols; x++)
+                                {
+                                    if (bin.At<byte>(y, x) == 255) { leftX = x; break; }
+                                }
+                                int rightX = -1;
+                                for (int x = bin.Cols - 1; x >= 0; x--)
+                                {
+                                    if (bin.At<byte>(y, x) == 255) { rightX = x; break; }
+                                }
+
+                                if (leftX != -1 && rightX != -1 && rightX > leftX)
+                                {
+                                    float centerX = (leftX + rightX) / 2.0f;
+                                    centerPoints.Add(new Point2f(centerX + safeBtmRoi.X, y + safeBtmRoi.Y));
+                                }
+                            }
+
+                            if (centerPoints.Count < 5) return 3;
+
+                            Line2D btmLine = Cv2.FitLine(centerPoints, DistanceTypes.L2, 0, 0.01, 0.01);
+
+                            // ★修正: float ではなく double で受ける
+                            double vx = btmLine.Vx;
+                            double vy = btmLine.Vy;
+                            double x0 = btmLine.X1;
+                            double y0 = btmLine.Y1;
+
+                            // 描画用の軸線ベクトル (下向きに統一し、線を長く引く)
+                            if (vy < 0) { vx = -vx; vy = -vy; }
+
+                            // ★修正: 計算を完全に double で行い、最後に int キャストする
+                            _btmAxisPt1 = new CvPoint((int)(x0 - 500.0 * vx), (int)(y0 - 500.0 * vy));
+                            _btmAxisPt2 = new CvPoint((int)(x0 + 500.0 * vx), (int)(y0 + 500.0 * vy));
+
+                            // ROIのY方向中心における、下部部品の中心X座標
+                            double targetY = safeBtmRoi.Y + safeBtmRoi.Height / 2.0;
+                            double t = (targetY - y0) / vy;
+                            double btmCenterX = x0 + t * vx;
+
+                            _btmCenter = new CvPoint((int)btmCenterX, (int)targetY);
+
+                            double btm_tilt_rad = Math.Atan2(vx, vy);
+                            _lastAngle = (top_tilt_rad - btm_tilt_rad) * 180.0 / Math.PI;
                         }
                     }
                     else return 3;
 
-                    _lastXOffsetMm = (_btmCenter.X - _topCenter.X) * PixelToMmRatio;
+                    // 4. 垂線投影とズレ計算
+                    double dy = _btmCenter.Y - _topCenter.Y;
+                    double expected_btm_X = _topCenter.X - dy * Math.Tan(top_tilt_rad);
+                    _projectedBtm = new CvPoint((int)expected_btm_X, _btmCenter.Y);
+
+                    _lastXOffsetMm = (_btmCenter.X - expected_btm_X) * PixelToMmRatio;
+
                     _isOffsetOk = Math.Abs(_lastXOffsetMm - TargetXOffsetMm) <= OffsetToleranceMm;
                     _isAngleOk = Math.Abs(_lastAngle - TargetAngleDeg) <= AngleToleranceDeg;
                     _lastResult = (_isOffsetOk && _isAngleOk) ? 1 : 2;
@@ -241,7 +319,10 @@ namespace _20260224SolderInspec
 
             if (IsJigOk && _detectedHoles.Count >= 2)
             {
-                Cv2.Line(dispMat, _topCenter, _btmCenter, Scalar.Magenta, 2, LineTypes.AntiAlias);
+                // ★修正: Point2f ではなく CvPoint をそのまま渡す
+                Cv2.Line(dispMat, _btmAxisPt1, _btmAxisPt2, new Scalar(255, 255, 0), 2, LineTypes.AntiAlias);
+
+                Cv2.Line(dispMat, _topCenter, _projectedBtm, Scalar.Magenta, 2, LineTypes.AntiAlias);
                 Cv2.DrawMarker(dispMat, _btmCenter, Scalar.Blue, MarkerTypes.Cross, 20, 2);
 
                 int tx = Math.Max(_topCenter.X, _btmCenter.X) + 40, ty = (_topCenter.Y + _btmCenter.Y) / 2;

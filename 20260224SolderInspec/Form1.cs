@@ -38,10 +38,24 @@ namespace _20260224SolderInspec
         private NumericUpDown _nudBtmRoiX, _nudBtmRoiY, _nudBtmRoiW, _nudBtmRoiH;
         private NumericUpDown _nudHolesX, _nudHolesY, _nudHolesW, _nudHolesH;
         private NumericUpDown _nudMinHoleArea, _nudMaxHoleArea, _nudHoleThresh, _nudMinCircularity;
+
+        private NumericUpDown _nudEdgeThresh;
+        private NumericUpDown _nudSplitY;
+
         private NumericUpDown _nudJigLX, _nudJigLY, _nudJigLW, _nudJigLH;
         private NumericUpDown _nudJigRX, _nudJigRY, _nudJigRW, _nudJigRH;
         private NumericUpDown _nudJigTarget, _nudJigTolerance, _nudPixelToMm;
         private NumericUpDown _nudTargetXOffset, _nudOffsetTolerance, _nudTargetAngle, _nudAngleTolerance, _nudActualWidthMm;
+
+        private NumericUpDown _nudPlcDelayMs;
+        private int _plcDelayMs = 100;
+
+        // ★追加：リトライ用の変数
+        private NumericUpDown _nudRetryCount;
+        private NumericUpDown _nudRetryDelayMs;
+        private int _maxRetryCount = 3;       // デフォルト: 3回
+        private int _retryDelayMs = 100;      // デフォルト: 100ms (0.1秒)
+        private int _currentRetry = 0;        // 現在のリトライ回数カウント用
 
         private Button _btnCalcRatio;
 
@@ -134,7 +148,6 @@ namespace _20260224SolderInspec
                 n.ValueChanged += (s, e) => UpdateSettingsFromUI(); tab.Controls.Add(n); y += lh;
             }
 
-            // ★★★ 追加：システム動作モードのUI切替 ★★★
             tab.Controls.Add(new Label { Text = "--- システム動作モード ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Red }); y += 22;
 
             ComboBox cmbAppMode = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw + 50, 25), DropDownStyle = ComboBoxStyle.DropDownList };
@@ -147,8 +160,16 @@ namespace _20260224SolderInspec
             };
 
             tab.Controls.Add(new Label { Text = "検査トリガー元:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            tab.Controls.Add(cmbAppMode); y += lh + 10;
-            // ★★★ 追加ここまで ★★★
+            tab.Controls.Add(cmbAppMode); y += lh;
+
+            AddN("PLC Delay(待機) ms:", ref _nudPlcDelayMs, 0, 5000, _plcDelayMs);
+            y += 10;
+
+            // ★追加：煙対策のリトライ機能UI
+            tab.Controls.Add(new Label { Text = "--- 検査リトライ設定 (煙・ノイズ対策) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Red }); y += 22;
+            AddN("最大リトライ回数:", ref _nudRetryCount, 0, 10, _maxRetryCount);
+            AddN("リトライ間隔(ms):", ref _nudRetryDelayMs, 0, 5000, _retryDelayMs);
+            y += 10;
 
             tab.Controls.Add(new Label { Text = "--- トリガー設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
             _cmbTriggerMode = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), DropDownStyle = ComboBoxStyle.DropDownList };
@@ -247,12 +268,21 @@ namespace _20260224SolderInspec
             tab.Controls.Add(_pictureBoxDebug); y += 300;
 
             tab.Controls.Add(new Label { Text = "--- 二値化 閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
-            tab.Controls.Add(new Label { Text = "Hole Binary Thresh:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+
+            tab.Controls.Add(new Label { Text = "上下分割のY境界線:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+            _nudSplitY = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 3000, Value = _measurement.SplitBoundaryY };
+            _nudSplitY.ValueChanged += (s, e) => UpdateSettingsFromUI();
+            tab.Controls.Add(_nudSplitY); y += lh;
+
+            tab.Controls.Add(new Label { Text = "Edge Binary (上半分):", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+            _nudEdgeThresh = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.EdgeThreshold };
+            _nudEdgeThresh.ValueChanged += (s, e) => UpdateSettingsFromUI();
+            tab.Controls.Add(_nudEdgeThresh); y += lh;
+
+            tab.Controls.Add(new Label { Text = "Hole Binary (下半分):", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
             _nudHoleThresh = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.HoleThreshold };
             _nudHoleThresh.ValueChanged += (s, e) => UpdateSettingsFromUI();
             tab.Controls.Add(_nudHoleThresh); y += lh;
-
-            tab.Controls.Add(new Label { Text = "※このタブでは「画像保存設定(Save ROI)」の範囲を\n二値化してリアルタイム表示します。", Location = new Point(10, y + 20), AutoSize = true, ForeColor = Color.DarkGreen });
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -303,6 +333,7 @@ namespace _20260224SolderInspec
                     double b = _measurement.CalculateBrightness(frame, _roi);
                     if (isDebug) _measurement.UpdateDebugImageRealtime(frame, _saveRoi);
 
+                    // 手動検査はリトライなしの一発勝負
                     if (_requestManualTest)
                     {
                         _requestManualTest = false;
@@ -310,6 +341,7 @@ namespace _20260224SolderInspec
                         SafeInvoke(() => UpdateResultDisplay(manualResult, true));
                         _pendingSaveResult = manualResult;
                     }
+
                     UpdateStateMachine(frame, b, isDebug);
                     SafeBeginInvoke(() => { UpdateUIDisplay(frame, b, isDebug); frame.Dispose(); _isProcessing = false; });
                 }
@@ -327,27 +359,77 @@ namespace _20260224SolderInspec
                 case STATE_WAITING:
                     if (isTriggered)
                     {
+                        _currentRetry = 0; // ★トリガーごとにリトライ回数をリセット
+
                         if (_appSettings.TriggerMode == "Plc")
                         {
-                            _plcTriggerReceived = false; ExecuteInspection(frame, isDebug);
-                            _currentState = STATE_COOLING; _cooldownStartTime = DateTime.Now;
-                            SafeInvoke(() => lblStateUpdate("TESTING (PLC)", Color.Yellow));
+                            _plcTriggerReceived = false;
+                            _currentState = STATE_STABILIZING;
+                            _stabilityStartTime = DateTime.Now;
+                            SafeInvoke(() => lblStateUpdate("DELAYING...", Color.Yellow));
                         }
                         else
                         {
-                            _currentState = STATE_STABILIZING; _stabilityStartTime = DateTime.Now;
-                            SafeInvoke(() => lblStateUpdate("TESTING", Color.Yellow));
+                            _currentState = STATE_STABILIZING;
+                            _stabilityStartTime = DateTime.Now;
+                            SafeInvoke(() => lblStateUpdate("TESTING...", Color.Yellow));
                         }
                     }
                     break;
+
                 case STATE_STABILIZING:
-                    if (isReset) { _currentState = STATE_WAITING; SafeInvoke(() => lblStateUpdate("READY", Color.LightGray)); }
-                    else if ((DateTime.Now - _stabilityStartTime).TotalMilliseconds > _stabilityDurationMs)
+                    if (_appSettings.TriggerMode == "Plc")
                     {
-                        ExecuteInspection(frame, isDebug);
-                        _currentState = STATE_COOLING; _cooldownStartTime = DateTime.Now;
+                        // 初回はPLC Delayを待ち、リトライ時はRetry Delayを待つ
+                        double targetDelay = _currentRetry == 0 ? _plcDelayMs : _retryDelayMs;
+
+                        if ((DateTime.Now - _stabilityStartTime).TotalMilliseconds > targetDelay)
+                        {
+                            int inspectResult = _measurement.Inspect(frame, _saveRoi, isDebug);
+
+                            // OK(1) または リトライ上限に達した場合は結果を確定
+                            if (inspectResult == 1 || _currentRetry >= _maxRetryCount)
+                            {
+                                ProcessInspectionResult(inspectResult);
+                                _currentState = STATE_COOLING;
+                                _cooldownStartTime = DateTime.Now;
+                            }
+                            else
+                            {
+                                // エラー(NG)だった場合は煙対策としてリトライ
+                                _currentRetry++;
+                                _stabilityStartTime = DateTime.Now; // タイマーリセット（新しい画像を待つため）
+                                SafeInvoke(() => lblStateUpdate($"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (isReset) { _currentState = STATE_WAITING; SafeInvoke(() => lblStateUpdate("READY", Color.LightGray)); }
+                        else
+                        {
+                            double targetDelay = _currentRetry == 0 ? _stabilityDurationMs : _retryDelayMs;
+                            if ((DateTime.Now - _stabilityStartTime).TotalMilliseconds > targetDelay)
+                            {
+                                int inspectResult = _measurement.Inspect(frame, _saveRoi, isDebug);
+
+                                if (inspectResult == 1 || _currentRetry >= _maxRetryCount)
+                                {
+                                    ProcessInspectionResult(inspectResult);
+                                    _currentState = STATE_COOLING;
+                                    _cooldownStartTime = DateTime.Now;
+                                }
+                                else
+                                {
+                                    _currentRetry++;
+                                    _stabilityStartTime = DateTime.Now;
+                                    SafeInvoke(() => lblStateUpdate($"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange));
+                                }
+                            }
+                        }
                     }
                     break;
+
                 case STATE_COOLING:
                     if ((DateTime.Now - _cooldownStartTime).TotalMilliseconds > _cooldownDurationMs)
                         if (_appSettings.TriggerMode == "Plc" || isReset) { _currentState = STATE_WAITING; SafeInvoke(() => lblStateUpdate("READY", Color.LightGray)); }
@@ -357,9 +439,9 @@ namespace _20260224SolderInspec
 
         private void lblStateUpdate(string text, Color color) { if (_lblBigResult != null && !_lblBigResult.IsDisposed) { _lblBigResult.Text = text; _lblBigResult.BackColor = color; } }
 
-        private void ExecuteInspection(Mat frame, bool isDebug)
+        // ★結果送信処理を独立したメソッドに分離
+        private void ProcessInspectionResult(int inspectResult)
         {
-            int inspectResult = _measurement.Inspect(frame, _saveRoi, isDebug);
             _plc.SendResult(inspectResult == 1);
             if (_appSettings.TriggerMode == "Plc") Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
             SafeInvoke(() => UpdateResultDisplay(inspectResult, false));
@@ -372,6 +454,7 @@ namespace _20260224SolderInspec
             using (Mat disp = new Mat())
             {
                 if (frame.Channels() == 1) Cv2.CvtColor(frame, disp, ColorConversionCodes.GRAY2BGR); else frame.CopyTo(disp);
+
                 if (_chkShowOverlay.Checked)
                 {
                     Cv2.Rectangle(disp, _roi, Scalar.Yellow, 2);
@@ -380,8 +463,12 @@ namespace _20260224SolderInspec
                     Cv2.Rectangle(disp, _measurement.JigLeftRoi, Scalar.Yellow, 2);
                     Cv2.Rectangle(disp, _measurement.JigRightRoi, Scalar.Yellow, 2);
                     Cv2.Rectangle(disp, _saveRoi, Scalar.LightSkyBlue, 1);
+
+                    Cv2.Line(disp, new CvPoint(0, _measurement.SplitBoundaryY), new CvPoint(disp.Width, _measurement.SplitBoundaryY), Scalar.LightGray, 2);
+
                     _measurement.DrawOverlay(disp);
                 }
+
                 if (_pendingSaveResult != -1)
                 {
                     if (_saveMode == 2 || (_saveMode == 1 && _pendingSaveResult != 1)) SaveInspectionImage(disp, _pendingSaveResult);
@@ -390,6 +477,7 @@ namespace _20260224SolderInspec
                 Bitmap bmp = BitmapConverter.ToBitmap(disp);
                 Image old = _pictureBox.Image; _pictureBox.Image = bmp; old?.Dispose();
             }
+
             if (isDebug)
             {
                 using (Mat binImg = new Mat())
@@ -444,12 +532,24 @@ namespace _20260224SolderInspec
         {
             if (_isLoadingConfig) return;
             _triggerThreshold = (double)_nudTriggerThreshold.Value; _stabilityDurationMs = (int)_nudStabilityDuration.Value; _resetThreshold = (double)_nudResetThreshold.Value;
+
+            _plcDelayMs = (int)_nudPlcDelayMs.Value;
+
+            // ★UIからリトライ設定を取得
+            _maxRetryCount = (int)_nudRetryCount.Value;
+            _retryDelayMs = (int)_nudRetryDelayMs.Value;
+
             _roi = new CvRect((int)_nudRoiX.Value, (int)_nudRoiY.Value, (int)_nudRoiW.Value, (int)_nudRoiH.Value);
             _saveRoi = new CvRect((int)_nudSaveRoiX.Value, (int)_nudSaveRoiY.Value, (int)_nudSaveRoiW.Value, (int)_nudSaveRoiH.Value);
             _measurement.BtmMeasureRoi = new CvRect((int)_nudBtmRoiX.Value, (int)_nudBtmRoiY.Value, (int)_nudBtmRoiW.Value, (int)_nudBtmRoiH.Value);
             _measurement.HolesRoi = new CvRect((int)_nudHolesX.Value, (int)_nudHolesY.Value, (int)_nudHolesW.Value, (int)_nudHolesH.Value);
             _measurement.MinHoleArea = (int)_nudMinHoleArea.Value; _measurement.MaxHoleArea = (int)_nudMaxHoleArea.Value;
-            _measurement.MinCircularity = (double)_nudMinCircularity.Value; _measurement.HoleThreshold = (int)_nudHoleThresh.Value;
+            _measurement.MinCircularity = (double)_nudMinCircularity.Value;
+
+            _measurement.SplitBoundaryY = (int)_nudSplitY.Value;
+            _measurement.EdgeThreshold = (int)_nudEdgeThresh.Value;
+            _measurement.HoleThreshold = (int)_nudHoleThresh.Value;
+
             _measurement.JigLeftRoi = new CvRect((int)_nudJigLX.Value, (int)_nudJigLY.Value, (int)_nudJigLW.Value, (int)_nudJigLH.Value);
             _measurement.JigRightRoi = new CvRect((int)_nudJigRX.Value, (int)_nudJigRY.Value, (int)_nudJigRW.Value, (int)_nudJigRH.Value);
 
@@ -475,12 +575,24 @@ namespace _20260224SolderInspec
 
                 _triggerOnBright = d.TryGetValue("TriggerOnBright", out var tb) ? bool.Parse(tb) : true;
                 _triggerThreshold = GetD("TriggerThreshold", _triggerThreshold); _stabilityDurationMs = GetI("StabilityDurationMs", _stabilityDurationMs);
+
+                _plcDelayMs = GetI("PlcDelayMs", _plcDelayMs);
+
+                // ★設定からリトライ設定を読み込み
+                _maxRetryCount = GetI("MaxRetryCount", _maxRetryCount);
+                _retryDelayMs = GetI("RetryDelayMs", _retryDelayMs);
+
                 _resetThreshold = GetD("ResetThreshold", _resetThreshold); _saveMode = GetI("SaveMode", _saveMode);
                 _roi = new CvRect(GetI("RoiX", _roi.X), GetI("RoiY", _roi.Y), GetI("RoiW", _roi.Width), GetI("RoiH", _roi.Height));
                 _saveRoi = new CvRect(GetI("SaveRoiX", _saveRoi.X), GetI("SaveRoiY", _saveRoi.Y), GetI("SaveRoiW", _saveRoi.Width), GetI("SaveRoiH", _saveRoi.Height));
                 _measurement.HolesRoi = new CvRect(GetI("HolesX", _measurement.HolesRoi.X), GetI("HolesY", _measurement.HolesRoi.Y), GetI("HolesW", _measurement.HolesRoi.Width), GetI("HolesH", _measurement.HolesRoi.Height));
                 _measurement.MinHoleArea = GetI("MinHoleArea", _measurement.MinHoleArea); _measurement.MaxHoleArea = GetI("MaxHoleArea", _measurement.MaxHoleArea);
-                _measurement.MinCircularity = GetD("MinCirc", _measurement.MinCircularity); _measurement.HoleThreshold = GetI("HoleThresh", _measurement.HoleThreshold);
+                _measurement.MinCircularity = GetD("MinCirc", _measurement.MinCircularity);
+
+                _measurement.SplitBoundaryY = GetI("SplitBoundaryY", _measurement.SplitBoundaryY);
+                _measurement.EdgeThreshold = GetI("EdgeThresh", _measurement.EdgeThreshold);
+                _measurement.HoleThreshold = GetI("HoleThresh", _measurement.HoleThreshold);
+
                 _measurement.BtmMeasureRoi = new CvRect(GetI("BtmRoiX", _measurement.BtmMeasureRoi.X), GetI("BtmRoiY", _measurement.BtmMeasureRoi.Y), GetI("BtmRoiW", _measurement.BtmMeasureRoi.Width), GetI("BtmRoiH", _measurement.BtmMeasureRoi.Height));
                 _measurement.JigLeftRoi = new CvRect(GetI("JigLX", _measurement.JigLeftRoi.X), GetI("JigLY", _measurement.JigLeftRoi.Y), GetI("JigLW", _measurement.JigLeftRoi.Width), GetI("JigLH", _measurement.JigLeftRoi.Height));
                 _measurement.JigRightRoi = new CvRect(GetI("JigRX", _measurement.JigRightRoi.X), GetI("JigRY", _measurement.JigRightRoi.Y), GetI("JigRW", _measurement.JigRightRoi.Width), GetI("JigRH", _measurement.JigRightRoi.Height));
@@ -493,12 +605,25 @@ namespace _20260224SolderInspec
                 _measurement.TargetAngleDeg = GetD("TargetAngleDeg", _measurement.TargetAngleDeg); _measurement.AngleToleranceDeg = GetD("AngleToleranceDeg", _measurement.AngleToleranceDeg);
 
                 _cmbTriggerMode.SelectedIndex = _triggerOnBright ? 0 : 1; _cmbSaveMode.SelectedIndex = _saveMode;
-                _nudTriggerThreshold.Value = (decimal)_triggerThreshold; _nudStabilityDuration.Value = _stabilityDurationMs; _nudResetThreshold.Value = (decimal)_resetThreshold;
+                _nudTriggerThreshold.Value = (decimal)_triggerThreshold; _nudStabilityDuration.Value = _stabilityDurationMs;
+
+                _nudPlcDelayMs.Value = _plcDelayMs;
+
+                // ★UIへリトライ設定を反映
+                _nudRetryCount.Value = _maxRetryCount;
+                _nudRetryDelayMs.Value = _retryDelayMs;
+
+                _nudResetThreshold.Value = (decimal)_resetThreshold;
                 _nudRoiX.Value = _roi.X; _nudRoiY.Value = _roi.Y; _nudRoiW.Value = _roi.Width; _nudRoiH.Value = _roi.Height;
                 _nudSaveRoiX.Value = _saveRoi.X; _nudSaveRoiY.Value = _saveRoi.Y; _nudSaveRoiW.Value = _saveRoi.Width; _nudSaveRoiH.Value = _saveRoi.Height;
                 _nudHolesX.Value = _measurement.HolesRoi.X; _nudHolesY.Value = _measurement.HolesRoi.Y; _nudHolesW.Value = _measurement.HolesRoi.Width; _nudHolesH.Value = _measurement.HolesRoi.Height;
                 _nudMinHoleArea.Value = _measurement.MinHoleArea; _nudMaxHoleArea.Value = _measurement.MaxHoleArea;
-                _nudMinCircularity.Value = (decimal)_measurement.MinCircularity; _nudHoleThresh.Value = _measurement.HoleThreshold;
+                _nudMinCircularity.Value = (decimal)_measurement.MinCircularity;
+
+                _nudSplitY.Value = _measurement.SplitBoundaryY;
+                _nudEdgeThresh.Value = _measurement.EdgeThreshold;
+                _nudHoleThresh.Value = _measurement.HoleThreshold;
+
                 _nudBtmRoiX.Value = _measurement.BtmMeasureRoi.X; _nudBtmRoiY.Value = _measurement.BtmMeasureRoi.Y; _nudBtmRoiW.Value = _measurement.BtmMeasureRoi.Width; _nudBtmRoiH.Value = _measurement.BtmMeasureRoi.Height;
                 _nudJigLX.Value = _measurement.JigLeftRoi.X; _nudJigLY.Value = _measurement.JigLeftRoi.Y; _nudJigLW.Value = _measurement.JigLeftRoi.Width; _nudJigLH.Value = _measurement.JigLeftRoi.Height;
                 _nudJigRX.Value = _measurement.JigRightRoi.X; _nudJigRY.Value = _measurement.JigRightRoi.Y; _nudJigRW.Value = _measurement.JigRightRoi.Width; _nudJigRH.Value = _measurement.JigRightRoi.Height;
@@ -521,12 +646,25 @@ namespace _20260224SolderInspec
                 using (var sw = new StreamWriter(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt")))
                 {
                     sw.WriteLine("TriggerOnBright=" + _triggerOnBright); sw.WriteLine("TriggerThreshold=" + _triggerThreshold);
-                    sw.WriteLine("StabilityDurationMs=" + _stabilityDurationMs); sw.WriteLine("ResetThreshold=" + _resetThreshold); sw.WriteLine("SaveMode=" + _saveMode);
+                    sw.WriteLine("StabilityDurationMs=" + _stabilityDurationMs);
+
+                    sw.WriteLine("PlcDelayMs=" + _plcDelayMs);
+
+                    // ★設定ファイルへリトライ設定を保存
+                    sw.WriteLine("MaxRetryCount=" + _maxRetryCount);
+                    sw.WriteLine("RetryDelayMs=" + _retryDelayMs);
+
+                    sw.WriteLine("ResetThreshold=" + _resetThreshold); sw.WriteLine("SaveMode=" + _saveMode);
                     sw.WriteLine("RoiX=" + _roi.X); sw.WriteLine("RoiY=" + _roi.Y); sw.WriteLine("RoiW=" + _roi.Width); sw.WriteLine("RoiH=" + _roi.Height);
                     sw.WriteLine("SaveRoiX=" + _saveRoi.X); sw.WriteLine("SaveRoiY=" + _saveRoi.Y); sw.WriteLine("SaveRoiW=" + _saveRoi.Width); sw.WriteLine("SaveRoiH=" + _saveRoi.Height);
                     sw.WriteLine("HolesX=" + _measurement.HolesRoi.X); sw.WriteLine("HolesY=" + _measurement.HolesRoi.Y); sw.WriteLine("HolesW=" + _measurement.HolesRoi.Width); sw.WriteLine("HolesH=" + _measurement.HolesRoi.Height);
                     sw.WriteLine("MinHoleArea=" + _measurement.MinHoleArea); sw.WriteLine("MaxHoleArea=" + _measurement.MaxHoleArea);
-                    sw.WriteLine("MinCirc=" + _measurement.MinCircularity); sw.WriteLine("HoleThresh=" + _measurement.HoleThreshold);
+                    sw.WriteLine("MinCirc=" + _measurement.MinCircularity);
+
+                    sw.WriteLine("SplitBoundaryY=" + _measurement.SplitBoundaryY);
+                    sw.WriteLine("EdgeThresh=" + _measurement.EdgeThreshold);
+                    sw.WriteLine("HoleThresh=" + _measurement.HoleThreshold);
+
                     sw.WriteLine("BtmRoiX=" + _measurement.BtmMeasureRoi.X); sw.WriteLine("BtmRoiY=" + _measurement.BtmMeasureRoi.Y); sw.WriteLine("BtmRoiW=" + _measurement.BtmMeasureRoi.Width); sw.WriteLine("BtmRoiH=" + _measurement.BtmMeasureRoi.Height);
                     sw.WriteLine("JigLX=" + _measurement.JigLeftRoi.X); sw.WriteLine("JigLY=" + _measurement.JigLeftRoi.Y); sw.WriteLine("JigLW=" + _measurement.JigLeftRoi.Width); sw.WriteLine("JigLH=" + _measurement.JigLeftRoi.Height);
                     sw.WriteLine("JigRX=" + _measurement.JigRightRoi.X); sw.WriteLine("JigRY=" + _measurement.JigRightRoi.Y); sw.WriteLine("JigRW=" + _measurement.JigRightRoi.Width); sw.WriteLine("JigRH=" + _measurement.JigRightRoi.Height);
