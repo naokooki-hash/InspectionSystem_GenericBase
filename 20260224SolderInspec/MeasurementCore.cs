@@ -29,12 +29,12 @@ namespace _20260224SolderInspec
         public CvRect JigLeftRoi { get; set; } = new CvRect(280, 315, 200, 200);
         public CvRect JigRightRoi { get; set; } = new CvRect(820, 315, 200, 200);
 
-        // ★UI改修: px から mm に変更
+        // mm に変更
         public double TargetJigDistanceMm { get; set; } = 40.0;
         public double JigToleranceMm { get; set; } = 1.5;
 
         public bool IsJigOk { get; private set; } = false;
-        public double LastJigDistanceMm { get; private set; } = 0.0; // 画面表示用
+        public double LastJigDistanceMm { get; private set; } = 0.0;
 
         private int _jigLeftEdgeX = 0, _jigRightEdgeX = 0;
         private bool _jigEdgeDetected = false;
@@ -91,7 +91,7 @@ namespace _20260224SolderInspec
             using (Mat roiMat = new Mat(frame, safeRoi)) { return Cv2.Mean(roiMat).Val0; }
         }
 
-        // ★改修: 輪郭の端ではなく「重心(Moments)」を計算してR形状のブレを吸収する
+        // 輪郭の端ではなく「重心(Moments)」を計算してR形状のブレを吸収
         private bool DetectJigEdge(Mat gray, CvRect roi, out int edgeX)
         {
             edgeX = 0;
@@ -140,13 +140,11 @@ namespace _20260224SolderInspec
                     {
                         _jigEdgeDetected = true;
 
-                        // ピクセル距離を計算し、mmに変換
                         double distancePx = Math.Abs(_jigRightEdgeX - _jigLeftEdgeX);
                         LastJigDistanceMm = distancePx * PixelToMmRatio;
 
-                        if (TargetJigDistanceMm <= 0) TargetJigDistanceMm = LastJigDistanceMm; // 初回安全装置
+                        if (TargetJigDistanceMm <= 0) TargetJigDistanceMm = LastJigDistanceMm;
 
-                        // ミリ単位での判定
                         IsJigOk = (Math.Abs(LastJigDistanceMm - TargetJigDistanceMm) <= JigToleranceMm);
                     }
 
@@ -255,7 +253,6 @@ namespace _20260224SolderInspec
                 int midY = (JigLeftRoi.Y + JigLeftRoi.Height / 2 + JigRightRoi.Y + JigRightRoi.Height / 2) / 2;
                 Cv2.Line(dispMat, new CvPoint(_jigLeftEdgeX, midY), new CvPoint(_jigRightEdgeX, midY), edgeCol, 1, LineTypes.AntiAlias);
 
-                // ★寸法を画面に表示して確認しやすくする
                 string edgeText = IsJigOk ? $"EDGE OK ({LastJigDistanceMm:F1}mm)" : $"EDGE ERROR ({LastJigDistanceMm:F1}mm)";
                 Cv2.PutText(dispMat, edgeText, new CvPoint(_jigLeftEdgeX, JigLeftRoi.Y - 10), HersheyFonts.HersheySimplex, 0.8, edgeCol, 2);
             }

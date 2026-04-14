@@ -134,6 +134,22 @@ namespace _20260224SolderInspec
                 n.ValueChanged += (s, e) => UpdateSettingsFromUI(); tab.Controls.Add(n); y += lh;
             }
 
+            // ★★★ 追加：システム動作モードのUI切替 ★★★
+            tab.Controls.Add(new Label { Text = "--- システム動作モード ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Red }); y += 22;
+
+            ComboBox cmbAppMode = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw + 50, 25), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbAppMode.Items.AddRange(new object[] { "Visual (カメラ輝度自動)", "Plc (ネットワーク指令)" });
+            cmbAppMode.SelectedIndex = _appSettings.TriggerMode == "Visual" ? 0 : 1;
+
+            cmbAppMode.SelectedIndexChanged += (s, e) => {
+                _appSettings.TriggerMode = cmbAppMode.SelectedIndex == 0 ? "Visual" : "Plc";
+                _appSettings.Save();
+            };
+
+            tab.Controls.Add(new Label { Text = "検査トリガー元:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+            tab.Controls.Add(cmbAppMode); y += lh + 10;
+            // ★★★ 追加ここまで ★★★
+
             tab.Controls.Add(new Label { Text = "--- トリガー設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
             _cmbTriggerMode = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), DropDownStyle = ComboBoxStyle.DropDownList };
             _cmbTriggerMode.Items.AddRange(new object[] { "明転 (>)", "暗転 (<)" });
@@ -196,7 +212,6 @@ namespace _20260224SolderInspec
             AddRect("左エッジ ROI:", ref _nudJigLX, ref _nudJigLY, ref _nudJigLW, ref _nudJigLH, _measurement.JigLeftRoi);
             AddRect("右エッジ ROI:", ref _nudJigRX, ref _nudJigRY, ref _nudJigRW, ref _nudJigRH, _measurement.JigRightRoi);
 
-            // ★UI改修: mm単位での入力に変更
             AddN("エッジ目標距離(mm):", ref _nudJigTarget, 0, 500, (decimal)_measurement.TargetJigDistanceMm, 2);
             AddN("エッジ許容誤差(mm):", ref _nudJigTolerance, 0, 50, (decimal)_measurement.JigToleranceMm, 2); y += 10;
 
@@ -438,7 +453,6 @@ namespace _20260224SolderInspec
             _measurement.JigLeftRoi = new CvRect((int)_nudJigLX.Value, (int)_nudJigLY.Value, (int)_nudJigLW.Value, (int)_nudJigLH.Value);
             _measurement.JigRightRoi = new CvRect((int)_nudJigRX.Value, (int)_nudJigRY.Value, (int)_nudJigRW.Value, (int)_nudJigRH.Value);
 
-            // ★UI改修に合わせて mm値を代入
             _measurement.TargetJigDistanceMm = (double)_nudJigTarget.Value;
             _measurement.JigToleranceMm = (double)_nudJigTolerance.Value;
 
@@ -471,7 +485,6 @@ namespace _20260224SolderInspec
                 _measurement.JigLeftRoi = new CvRect(GetI("JigLX", _measurement.JigLeftRoi.X), GetI("JigLY", _measurement.JigLeftRoi.Y), GetI("JigLW", _measurement.JigLeftRoi.Width), GetI("JigLH", _measurement.JigLeftRoi.Height));
                 _measurement.JigRightRoi = new CvRect(GetI("JigRX", _measurement.JigRightRoi.X), GetI("JigRY", _measurement.JigRightRoi.Y), GetI("JigRW", _measurement.JigRightRoi.Width), GetI("JigRH", _measurement.JigRightRoi.Height));
 
-                // ★ミリ単位のキー名に変更 (以前のpx値が読み込まれるのを防ぐためキー名を変えています)
                 _measurement.TargetJigDistanceMm = GetD("JigTargetMm", _measurement.TargetJigDistanceMm);
                 _measurement.JigToleranceMm = GetD("JigTolMm", _measurement.JigToleranceMm);
 
