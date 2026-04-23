@@ -32,9 +32,19 @@ namespace _20260224SolderInspec
         private CheckBox _chkShowOverlay;
         private ComboBox _cmbTriggerMode, _cmbSaveMode;
 
+        // ★追加：運用タブ用コントロールと状態
+        private Button _btnRunToggle;
+        private bool _isRunning = false; // 初期状態は「停止」
+        private bool _requestErrorTest = false;
+
         private NumericUpDown _nudTriggerThreshold, _nudStabilityDuration, _nudResetThreshold;
         private NumericUpDown _nudRoiX, _nudRoiY, _nudRoiW, _nudRoiH;
         private NumericUpDown _nudSaveRoiX, _nudSaveRoiY, _nudSaveRoiW, _nudSaveRoiH;
+
+        // ★追加：ログ保存期間の設定
+        private NumericUpDown _nudLogKeepDays;
+        private int _logKeepDays = 30; // デフォルト30日で自動削除
+
         private NumericUpDown _nudBtmRoiX, _nudBtmRoiY, _nudBtmRoiW, _nudBtmRoiH;
         private NumericUpDown _nudHolesX, _nudHolesY, _nudHolesW, _nudHolesH;
         private NumericUpDown _nudMinHoleArea, _nudMaxHoleArea, _nudHoleThresh, _nudMinCircularity;
@@ -50,12 +60,11 @@ namespace _20260224SolderInspec
         private NumericUpDown _nudPlcDelayMs;
         private int _plcDelayMs = 100;
 
-        // ★追加：リトライ用の変数
         private NumericUpDown _nudRetryCount;
         private NumericUpDown _nudRetryDelayMs;
-        private int _maxRetryCount = 3;       // デフォルト: 3回
-        private int _retryDelayMs = 100;      // デフォルト: 100ms (0.1秒)
-        private int _currentRetry = 0;        // 現在のリトライ回数カウント用
+        private int _maxRetryCount = 3;
+        private int _retryDelayMs = 100;
+        private int _currentRetry = 0;
 
         private Button _btnCalcRatio;
 
@@ -100,7 +109,7 @@ namespace _20260224SolderInspec
             this.Controls.Add(_pictureBox);
 
             int px = 660;
-            _lblStatus = new Label { Text = "Status: WAITING", Location = new Point(px, 10), AutoSize = true, Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold) };
+            _lblStatus = new Label { Text = "Status: STOPPED", Location = new Point(px, 10), AutoSize = true, Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold), ForeColor = Color.Red };
             _lblBrightness = new Label { Text = "Brightness: 0.0", Location = new Point(px, 40), AutoSize = true, Font = new Font(this.Font.FontFamily, 12) };
             this.Controls.Add(_lblStatus); this.Controls.Add(_lblBrightness);
 
@@ -116,26 +125,53 @@ namespace _20260224SolderInspec
         private void InitializeMainTab(TabPage tab)
         {
             int y = 10;
+
+            // ★機能追加：運転開始・終了ボタン
+            _btnRunToggle = new Button { Text = "▶ 運転開始 (START)", Location = new Point(10, y), Size = new Size(370, 60), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 16, FontStyle.Bold) };
+            _btnRunToggle.Click += (s, e) => {
+                _isRunning = !_isRunning;
+                if (_isRunning)
+                {
+                    _btnRunToggle.Text = "■ 運転停止 (STOP)";
+                    _btnRunToggle.BackColor = Color.Salmon;
+                    _currentState = STATE_WAITING;
+                    SafeInvoke(() => lblStateUpdate("READY", Color.LightGray));
+                }
+                else
+                {
+                    _btnRunToggle.Text = "▶ 運転開始 (START)";
+                    _btnRunToggle.BackColor = Color.LightGreen;
+                    _currentState = STATE_WAITING;
+                    SafeInvoke(() => lblStateUpdate("STOPPED", Color.DarkGray));
+                }
+            };
+            tab.Controls.Add(_btnRunToggle); y += 75;
+
             _chkShowOverlay = new CheckBox { Text = "計測パラメータを表示する", Location = new Point(10, y), AutoSize = true, Checked = true };
-            tab.Controls.Add(_chkShowOverlay); y += 40;
+            tab.Controls.Add(_chkShowOverlay); y += 30;
 
-            _lblBigResult = new Label { Text = "READY", Location = new Point(10, y), Size = new Size(370, 80), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 36, FontStyle.Bold), BackColor = Color.LightGray };
-            tab.Controls.Add(_lblBigResult); y += 100;
+            _lblBigResult = new Label { Text = "STOPPED", Location = new Point(10, y), Size = new Size(370, 80), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 36, FontStyle.Bold), BackColor = Color.DarkGray };
+            tab.Controls.Add(_lblBigResult); y += 95;
 
-            GroupBox gp = new GroupBox { Text = "生産カウンター", Location = new Point(10, y), Size = new Size(370, 120) };
-            _lblTotal = new Label { Text = "総検査数 : 0", Location = new Point(20, 30), AutoSize = true };
-            _lblOk = new Label { Text = "良品 (OK): 0", Location = new Point(20, 60), AutoSize = true, ForeColor = Color.Green, Font = new Font(this.Font, FontStyle.Bold) };
-            _lblNg = new Label { Text = "不良 (NG): 0", Location = new Point(20, 90), AutoSize = true, ForeColor = Color.Red, Font = new Font(this.Font, FontStyle.Bold) };
+            GroupBox gp = new GroupBox { Text = "生産カウンター", Location = new Point(10, y), Size = new Size(370, 110) };
+            _lblTotal = new Label { Text = "総検査数 : 0", Location = new Point(20, 25), AutoSize = true };
+            _lblOk = new Label { Text = "良品 (OK): 0", Location = new Point(20, 50), AutoSize = true, ForeColor = Color.Green, Font = new Font(this.Font, FontStyle.Bold) };
+            _lblNg = new Label { Text = "不良 (NG): 0", Location = new Point(20, 75), AutoSize = true, ForeColor = Color.Red, Font = new Font(this.Font, FontStyle.Bold) };
             gp.Controls.Add(_lblTotal); gp.Controls.Add(_lblOk); gp.Controls.Add(_lblNg);
-            tab.Controls.Add(gp); y += 140;
+            tab.Controls.Add(gp); y += 120;
 
             Button btnReset = new Button { Text = "カウンターリセット", Location = new Point(10, y), Size = new Size(370, 30) };
             btnReset.Click += (s, e) => { _totalCount = _okCount = _ngCount = 0; UpdateCounterDisplay(); };
-            tab.Controls.Add(btnReset); y += 60;
+            tab.Controls.Add(btnReset); y += 45;
 
-            Button btnTest = new Button { Text = "手動検査テスト", Location = new Point(10, y), Size = new Size(370, 50), BackColor = Color.LightSkyBlue, Font = new Font(this.Font.FontFamily, 12, FontStyle.Bold) };
+            Button btnTest = new Button { Text = "手動検査テスト", Location = new Point(10, y), Size = new Size(180, 50), BackColor = Color.LightSkyBlue, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
             btnTest.Click += (s, e) => _requestManualTest = true;
             tab.Controls.Add(btnTest);
+
+            // ★機能追加：強制NGテストボタン（PLCの異常処理確認用）
+            Button btnTestNg = new Button { Text = "強制NGテスト", Location = new Point(200, y), Size = new Size(180, 50), BackColor = Color.Orange, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
+            btnTestNg.Click += (s, e) => _requestErrorTest = true;
+            tab.Controls.Add(btnTestNg);
         }
 
         private void InitializeSettingsTab(TabPage tab)
@@ -165,7 +201,6 @@ namespace _20260224SolderInspec
             AddN("PLC Delay(待機) ms:", ref _nudPlcDelayMs, 0, 5000, _plcDelayMs);
             y += 10;
 
-            // ★追加：煙対策のリトライ機能UI
             tab.Controls.Add(new Label { Text = "--- 検査リトライ設定 (煙・ノイズ対策) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Red }); y += 22;
             AddN("最大リトライ回数:", ref _nudRetryCount, 0, 10, _maxRetryCount);
             AddN("リトライ間隔(ms):", ref _nudRetryDelayMs, 0, 5000, _retryDelayMs);
@@ -192,6 +227,9 @@ namespace _20260224SolderInspec
             _cmbSaveMode.SelectedIndex = _saveMode;
             _cmbSaveMode.SelectedIndexChanged += (s, e) => { if (!_isLoadingConfig) _saveMode = _cmbSaveMode.SelectedIndex; };
             tab.Controls.Add(new Label { Text = "保存モード:", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); tab.Controls.Add(_cmbSaveMode); y += lh;
+
+            // ★機能追加：ログ保存日数の設定
+            AddN("ログ保存期間(日) ※0で無期限:", ref _nudLogKeepDays, 0, 3650, _logKeepDays);
 
             AddN("Save ROI X:", ref _nudSaveRoiX, 0, 3000, _saveRoi.X); AddN("Save ROI Y:", ref _nudSaveRoiY, 0, 3000, _saveRoi.Y);
             AddN("Save ROI W:", ref _nudSaveRoiW, 1, 3000, _saveRoi.Width); AddN("Save ROI H:", ref _nudSaveRoiH, 1, 3000, _saveRoi.Height); y += 20;
@@ -290,6 +328,9 @@ namespace _20260224SolderInspec
             _isUiLoaded = true;
             if (_camera.Initialize()) _camera.StartCapture();
             _ = MonitorPlcTriggerAsync();
+
+            // ★機能追加：起動時に古いログをバックグラウンドで自動削除
+            Task.Run(() => DeleteOldLogs());
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
@@ -297,6 +338,31 @@ namespace _20260224SolderInspec
             _isMonitoring = false; _isUiLoaded = false;
             _camera.StopCapture(); _camera.Dispose(); _plc.Disconnect();
             SaveConfig();
+        }
+
+        // ★機能追加：古いログフォルダを削除するメソッド
+        private void DeleteOldLogs()
+        {
+            if (_logKeepDays <= 0) return; // 0の場合は無期限保存
+            try
+            {
+                if (!Directory.Exists(_logDirPath)) return;
+                DateTime thresholdDate = DateTime.Now.Date.AddDays(-_logKeepDays);
+                var dirs = Directory.GetDirectories(_logDirPath);
+
+                foreach (var dir in dirs)
+                {
+                    string dirName = new DirectoryInfo(dir).Name;
+                    if (DateTime.TryParseExact(dirName, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out DateTime dirDate))
+                    {
+                        if (dirDate.Date < thresholdDate)
+                        {
+                            Directory.Delete(dir, true);
+                        }
+                    }
+                }
+            }
+            catch { /* 削除エラーは運用に影響を与えないため無視 */ }
         }
 
         private async Task MonitorPlcTriggerAsync()
@@ -333,13 +399,27 @@ namespace _20260224SolderInspec
                     double b = _measurement.CalculateBrightness(frame, _roi);
                     if (isDebug) _measurement.UpdateDebugImageRealtime(frame, _saveRoi);
 
-                    // 手動検査はリトライなしの一発勝負
+                    // 通常の手動テスト
                     if (_requestManualTest)
                     {
                         _requestManualTest = false;
                         int manualResult = _measurement.Inspect(frame, _saveRoi, isDebug);
                         SafeInvoke(() => UpdateResultDisplay(manualResult, true));
                         _pendingSaveResult = manualResult;
+                    }
+
+                    // ★機能追加：強制NGテスト（通信確認用）
+                    if (_requestErrorTest)
+                    {
+                        _requestErrorTest = false;
+                        int forceNgResult = 2; // 2 = NG
+
+                        // PLCへ「NG」を送信し、トリガーもリセットする
+                        _plc.SendResult(false);
+                        if (_appSettings.TriggerMode == "Plc") Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+
+                        SafeInvoke(() => UpdateResultDisplay(forceNgResult, true));
+                        _pendingSaveResult = forceNgResult;
                     }
 
                     UpdateStateMachine(frame, b, isDebug);
@@ -351,15 +431,16 @@ namespace _20260224SolderInspec
 
         private void UpdateStateMachine(Mat frame, double b, bool isDebug)
         {
-            bool isTriggered = _appSettings.TriggerMode == "Plc" ? _plcTriggerReceived : (_triggerOnBright ? (b > _triggerThreshold) : (b < _triggerThreshold));
-            bool isReset = _appSettings.TriggerMode == "Plc" ? false : (_triggerOnBright ? (b < _resetThreshold) : (b > _resetThreshold));
+            // ★機能追加：_isRunning が false の時は一切のトリガーを受け付けない（ソフトウェアロック）
+            bool isTriggered = _isRunning && (_appSettings.TriggerMode == "Plc" ? _plcTriggerReceived : (_triggerOnBright ? (b > _triggerThreshold) : (b < _triggerThreshold)));
+            bool isReset = _isRunning && (_appSettings.TriggerMode == "Plc" ? false : (_triggerOnBright ? (b < _resetThreshold) : (b > _resetThreshold)));
 
             switch (_currentState)
             {
                 case STATE_WAITING:
                     if (isTriggered)
                     {
-                        _currentRetry = 0; // ★トリガーごとにリトライ回数をリセット
+                        _currentRetry = 0;
 
                         if (_appSettings.TriggerMode == "Plc")
                         {
@@ -378,16 +459,21 @@ namespace _20260224SolderInspec
                     break;
 
                 case STATE_STABILIZING:
+                    // 途中で停止ボタンが押されたら強制リセット
+                    if (!_isRunning)
+                    {
+                        _currentState = STATE_WAITING;
+                        return;
+                    }
+
                     if (_appSettings.TriggerMode == "Plc")
                     {
-                        // 初回はPLC Delayを待ち、リトライ時はRetry Delayを待つ
                         double targetDelay = _currentRetry == 0 ? _plcDelayMs : _retryDelayMs;
 
                         if ((DateTime.Now - _stabilityStartTime).TotalMilliseconds > targetDelay)
                         {
                             int inspectResult = _measurement.Inspect(frame, _saveRoi, isDebug);
 
-                            // OK(1) または リトライ上限に達した場合は結果を確定
                             if (inspectResult == 1 || _currentRetry >= _maxRetryCount)
                             {
                                 ProcessInspectionResult(inspectResult);
@@ -396,9 +482,8 @@ namespace _20260224SolderInspec
                             }
                             else
                             {
-                                // エラー(NG)だった場合は煙対策としてリトライ
                                 _currentRetry++;
-                                _stabilityStartTime = DateTime.Now; // タイマーリセット（新しい画像を待つため）
+                                _stabilityStartTime = DateTime.Now;
                                 SafeInvoke(() => lblStateUpdate($"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange));
                             }
                         }
@@ -439,7 +524,6 @@ namespace _20260224SolderInspec
 
         private void lblStateUpdate(string text, Color color) { if (_lblBigResult != null && !_lblBigResult.IsDisposed) { _lblBigResult.Text = text; _lblBigResult.BackColor = color; } }
 
-        // ★結果送信処理を独立したメソッドに分離
         private void ProcessInspectionResult(int inspectResult)
         {
             _plc.SendResult(inspectResult == 1);
@@ -492,28 +576,64 @@ namespace _20260224SolderInspec
 
             if (_lblStatus != null && !_lblStatus.IsDisposed)
             {
-                _lblStatus.Text = "Status: " + (_currentState == 0 ? "WAITING" : (_currentState == 1 ? "STABILIZING" : "COOLING"));
-                _lblStatus.ForeColor = _currentState == 0 ? Color.Gray : (_currentState == 1 ? Color.Goldenrod : Color.LimeGreen);
+                // ★機能追加：状態ラベルの「STOPPED」表示対応
+                if (!_isRunning)
+                {
+                    _lblStatus.Text = "Status: STOPPED";
+                    _lblStatus.ForeColor = Color.Red;
+                }
+                else
+                {
+                    _lblStatus.Text = "Status: " + (_currentState == 0 ? "WAITING" : (_currentState == 1 ? "STABILIZING" : "COOLING"));
+                    _lblStatus.ForeColor = _currentState == 0 ? Color.Gray : (_currentState == 1 ? Color.Goldenrod : Color.LimeGreen);
+                }
             }
             if (_lblBrightness != null && !_lblBrightness.IsDisposed) _lblBrightness.Text = "Brightness: " + b.ToString("F1");
         }
 
+        // ★改修：タクト影響ゼロの非同期保存 ＆ JPEG高圧縮
         private void SaveInspectionImage(Mat img, int res)
         {
             try
             {
-                string dir = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd"));
-                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                string resStr = (res == 1) ? "OK" : "NG";
-                string fileName = string.Format("{0:HHmmss_fff}_{1}.jpg", DateTime.Now, resStr);
-                string path = Path.Combine(dir, fileName);
+                // メインの検査サイクル（タクト）を止めないよう、画像のコピーを作って裏側(別スレッド)に投げる
+                Mat imgToSave = img.Clone();
 
-                CvRect crop = _saveRoi & new CvRect(0, 0, img.Width, img.Height);
-                using (Mat cropped = new Mat(img, crop)) using (Mat resized = new Mat())
+                Task.Run(() =>
                 {
-                    Cv2.Resize(cropped, resized, new CvSize(cropped.Width / 2, cropped.Height / 2));
-                    Cv2.ImWrite(path, resized);
-                }
+                    try
+                    {
+                        string dir = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd"));
+                        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                        string resStr = (res == 1) ? "OK" : "NG";
+                        string fileName = string.Format("{0:HHmmss_fff}_{1}.jpg", DateTime.Now, resStr);
+                        string path = Path.Combine(dir, fileName);
+
+                        CvRect crop = _saveRoi & new CvRect(0, 0, imgToSave.Width, imgToSave.Height);
+                        using (Mat cropped = new Mat(imgToSave, crop))
+                        using (Mat resized = new Mat())
+                        {
+                            // 1. サイズを半分に縮小（容量 1/4）
+                            Cv2.Resize(cropped, resized, new CvSize(cropped.Width / 2, cropped.Height / 2));
+
+                            // 2. JPEGの圧縮率(画質)を指定して極限まで軽くする（60〜70あたりがおすすめ）
+                            // ※100が最高画質。指定しないとデフォルトで95になり重くなります。
+                            var p = new ImageEncodingParam(ImwriteFlags.JpegQuality, 65);
+
+                            // 保存実行
+                            Cv2.ImWrite(path, resized, p);
+                        }
+                    }
+                    catch { }
+                    finally
+                    {
+                        // 使い終わったコピー画像をメモリから確実に解放する
+                        if (imgToSave != null && !imgToSave.IsDisposed)
+                        {
+                            imgToSave.Dispose();
+                        }
+                    }
+                });
             }
             catch { }
         }
@@ -534,13 +654,15 @@ namespace _20260224SolderInspec
             _triggerThreshold = (double)_nudTriggerThreshold.Value; _stabilityDurationMs = (int)_nudStabilityDuration.Value; _resetThreshold = (double)_nudResetThreshold.Value;
 
             _plcDelayMs = (int)_nudPlcDelayMs.Value;
-
-            // ★UIからリトライ設定を取得
             _maxRetryCount = (int)_nudRetryCount.Value;
             _retryDelayMs = (int)_nudRetryDelayMs.Value;
 
             _roi = new CvRect((int)_nudRoiX.Value, (int)_nudRoiY.Value, (int)_nudRoiW.Value, (int)_nudRoiH.Value);
             _saveRoi = new CvRect((int)_nudSaveRoiX.Value, (int)_nudSaveRoiY.Value, (int)_nudSaveRoiW.Value, (int)_nudSaveRoiH.Value);
+
+            // ★UIからログ保存日数を取得
+            _logKeepDays = (int)_nudLogKeepDays.Value;
+
             _measurement.BtmMeasureRoi = new CvRect((int)_nudBtmRoiX.Value, (int)_nudBtmRoiY.Value, (int)_nudBtmRoiW.Value, (int)_nudBtmRoiH.Value);
             _measurement.HolesRoi = new CvRect((int)_nudHolesX.Value, (int)_nudHolesY.Value, (int)_nudHolesW.Value, (int)_nudHolesH.Value);
             _measurement.MinHoleArea = (int)_nudMinHoleArea.Value; _measurement.MaxHoleArea = (int)_nudMaxHoleArea.Value;
@@ -577,14 +699,16 @@ namespace _20260224SolderInspec
                 _triggerThreshold = GetD("TriggerThreshold", _triggerThreshold); _stabilityDurationMs = GetI("StabilityDurationMs", _stabilityDurationMs);
 
                 _plcDelayMs = GetI("PlcDelayMs", _plcDelayMs);
-
-                // ★設定からリトライ設定を読み込み
                 _maxRetryCount = GetI("MaxRetryCount", _maxRetryCount);
                 _retryDelayMs = GetI("RetryDelayMs", _retryDelayMs);
 
                 _resetThreshold = GetD("ResetThreshold", _resetThreshold); _saveMode = GetI("SaveMode", _saveMode);
                 _roi = new CvRect(GetI("RoiX", _roi.X), GetI("RoiY", _roi.Y), GetI("RoiW", _roi.Width), GetI("RoiH", _roi.Height));
                 _saveRoi = new CvRect(GetI("SaveRoiX", _saveRoi.X), GetI("SaveRoiY", _saveRoi.Y), GetI("SaveRoiW", _saveRoi.Width), GetI("SaveRoiH", _saveRoi.Height));
+
+                // ★設定からログ保存日数を読み込み
+                _logKeepDays = GetI("LogKeepDays", _logKeepDays);
+
                 _measurement.HolesRoi = new CvRect(GetI("HolesX", _measurement.HolesRoi.X), GetI("HolesY", _measurement.HolesRoi.Y), GetI("HolesW", _measurement.HolesRoi.Width), GetI("HolesH", _measurement.HolesRoi.Height));
                 _measurement.MinHoleArea = GetI("MinHoleArea", _measurement.MinHoleArea); _measurement.MaxHoleArea = GetI("MaxHoleArea", _measurement.MaxHoleArea);
                 _measurement.MinCircularity = GetD("MinCirc", _measurement.MinCircularity);
@@ -608,14 +732,16 @@ namespace _20260224SolderInspec
                 _nudTriggerThreshold.Value = (decimal)_triggerThreshold; _nudStabilityDuration.Value = _stabilityDurationMs;
 
                 _nudPlcDelayMs.Value = _plcDelayMs;
-
-                // ★UIへリトライ設定を反映
                 _nudRetryCount.Value = _maxRetryCount;
                 _nudRetryDelayMs.Value = _retryDelayMs;
 
                 _nudResetThreshold.Value = (decimal)_resetThreshold;
                 _nudRoiX.Value = _roi.X; _nudRoiY.Value = _roi.Y; _nudRoiW.Value = _roi.Width; _nudRoiH.Value = _roi.Height;
                 _nudSaveRoiX.Value = _saveRoi.X; _nudSaveRoiY.Value = _saveRoi.Y; _nudSaveRoiW.Value = _saveRoi.Width; _nudSaveRoiH.Value = _saveRoi.Height;
+
+                // ★UIへログ保存日数を反映
+                _nudLogKeepDays.Value = _logKeepDays;
+
                 _nudHolesX.Value = _measurement.HolesRoi.X; _nudHolesY.Value = _measurement.HolesRoi.Y; _nudHolesW.Value = _measurement.HolesRoi.Width; _nudHolesH.Value = _measurement.HolesRoi.Height;
                 _nudMinHoleArea.Value = _measurement.MinHoleArea; _nudMaxHoleArea.Value = _measurement.MaxHoleArea;
                 _nudMinCircularity.Value = (decimal)_measurement.MinCircularity;
@@ -649,14 +775,16 @@ namespace _20260224SolderInspec
                     sw.WriteLine("StabilityDurationMs=" + _stabilityDurationMs);
 
                     sw.WriteLine("PlcDelayMs=" + _plcDelayMs);
-
-                    // ★設定ファイルへリトライ設定を保存
                     sw.WriteLine("MaxRetryCount=" + _maxRetryCount);
                     sw.WriteLine("RetryDelayMs=" + _retryDelayMs);
 
                     sw.WriteLine("ResetThreshold=" + _resetThreshold); sw.WriteLine("SaveMode=" + _saveMode);
                     sw.WriteLine("RoiX=" + _roi.X); sw.WriteLine("RoiY=" + _roi.Y); sw.WriteLine("RoiW=" + _roi.Width); sw.WriteLine("RoiH=" + _roi.Height);
                     sw.WriteLine("SaveRoiX=" + _saveRoi.X); sw.WriteLine("SaveRoiY=" + _saveRoi.Y); sw.WriteLine("SaveRoiW=" + _saveRoi.Width); sw.WriteLine("SaveRoiH=" + _saveRoi.Height);
+
+                    // ★設定ファイルへログ保存日数を保存
+                    sw.WriteLine("LogKeepDays=" + _logKeepDays);
+
                     sw.WriteLine("HolesX=" + _measurement.HolesRoi.X); sw.WriteLine("HolesY=" + _measurement.HolesRoi.Y); sw.WriteLine("HolesW=" + _measurement.HolesRoi.Width); sw.WriteLine("HolesH=" + _measurement.HolesRoi.Height);
                     sw.WriteLine("MinHoleArea=" + _measurement.MinHoleArea); sw.WriteLine("MaxHoleArea=" + _measurement.MaxHoleArea);
                     sw.WriteLine("MinCirc=" + _measurement.MinCircularity);
