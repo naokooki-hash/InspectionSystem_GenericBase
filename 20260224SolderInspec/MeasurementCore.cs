@@ -42,15 +42,19 @@ namespace _20260224SolderInspec
         private int _jigLeftEdgeX = 0, _jigRightEdgeX = 0;
         private bool _jigEdgeDetected = false;
 
-        private CvPoint _topCenter, _btmCenter;
+        private CvPoint _topCenter = new CvPoint(0, 0);
+        private CvPoint _btmCenter = new CvPoint(0, 0);
         private List<CvPoint> _detectedHoles = new List<CvPoint>();
 
-        // ★修正: Point2f から CvPoint (int) に変更して型の衝突を回避
         private CvPoint _btmAxisPt1, _btmAxisPt2;
         private CvPoint _projectedBtm;
 
         private readonly object _imageLock = new object();
         private Mat _lastBinaryHole = new Mat();
+
+        private double _lastXOffsetMm, _lastAngle;
+        private int _lastResult = 0;
+        private bool _isOffsetOk = false, _isAngleOk = false, _hasValidData = false;
 
         public void GetDebugImage(Mat dst)
         {
@@ -152,10 +156,6 @@ namespace _20260224SolderInspec
             }
         }
 
-        private double _lastXOffsetMm, _lastAngle;
-        private int _lastResult = 0;
-        private bool _isOffsetOk = false, _isAngleOk = false, _hasValidData = false;
-
         public int Inspect(Mat frame, CvRect debugRoi, bool isDebugMode)
         {
             _hasValidData = false;
@@ -166,7 +166,9 @@ namespace _20260224SolderInspec
                     if (frame.Channels() == 3) Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
                     else frame.CopyTo(gray);
 
+                    // ==========================================
                     // 1. 上部エッジ距離チェック
+                    // ==========================================
                     _jigEdgeDetected = false;
                     IsJigOk = false;
 
@@ -180,7 +182,9 @@ namespace _20260224SolderInspec
                         IsJigOk = (Math.Abs(LastJigDistanceMm - TargetJigDistanceMm) <= JigToleranceMm);
                     }
 
+                    // ==========================================
                     // 2. 穴検出 (基準点3の導出)
+                    // ==========================================
                     _detectedHoles.Clear();
                     CvRect safeHolesRoi = HolesRoi & new CvRect(0, 0, gray.Width, gray.Height);
                     if (safeHolesRoi.Width > 0 && safeHolesRoi.Height > 0)
@@ -215,19 +219,22 @@ namespace _20260224SolderInspec
                         }
                     }
 
-                    if (!_jigEdgeDetected || !IsJigOk) { _hasValidData = true; return 2; }
-                    if (_detectedHoles.Count < 2) return 3;
+                    double top_tilt_rad = 0;
+                    if (_detectedHoles.Count >= 2)
+                    {
+                        var sorted = _detectedHoles.OrderBy(p => p.X).ToList();
+                        var leftHole = sorted.First(); var rightHole = sorted.Last();
 
-                    var sorted = _detectedHoles.OrderBy(p => p.X).ToList();
-                    var leftHole = sorted.First(); var rightHole = sorted.Last();
+                        _topCenter = new CvPoint((leftHole.X + rightHole.X) / 2, (leftHole.Y + rightHole.Y) / 2);
+                        top_tilt_rad = Math.Atan2(rightHole.Y - leftHole.Y, rightHole.X - leftHole.X);
+                        LastHoleDistancePx = Math.Sqrt(Math.Pow(rightHole.X - leftHole.X, 2) + Math.Pow(rightHole.Y - leftHole.Y, 2));
+                    }
 
-                    _topCenter = new CvPoint((leftHole.X + rightHole.X) / 2, (leftHole.Y + rightHole.Y) / 2);
-
-                    // 上部(穴)の水平に対する角度
-                    double top_tilt_rad = Math.Atan2(rightHole.Y - leftHole.Y, rightHole.X - leftHole.X);
-                    LastHoleDistancePx = Math.Sqrt(Math.Pow(rightHole.X - leftHole.X, 2) + Math.Pow(rightHole.Y - leftHole.Y, 2));
-
-                    // 3. 下部検出 (図解の「1と2の中点の軸」を導出)
+                    // ==========================================
+                    // 3. 下部検出 (仮想中心軸の導出)
+                    // ==========================================
+                    bool isBtmDetected = false;
+                    double btm_tilt_rad = 0;
                     CvRect safeBtmRoi = BtmMeasureRoi & new CvRect(0, 0, gray.Width, gray.Height);
                     if (safeBtmRoi.Width > 0 && safeBtmRoi.Height > 0)
                     {
@@ -258,47 +265,59 @@ namespace _20260224SolderInspec
                                 }
                             }
 
-                            if (centerPoints.Count < 5) return 3;
+                            if (centerPoints.Count >= 5)
+                            {
+                                Line2D btmLine = Cv2.FitLine(centerPoints, DistanceTypes.L2, 0, 0.01, 0.01);
+                                double vx = btmLine.Vx;
+                                double vy = btmLine.Vy;
+                                double x0 = btmLine.X1;
+                                double y0 = btmLine.Y1;
 
-                            Line2D btmLine = Cv2.FitLine(centerPoints, DistanceTypes.L2, 0, 0.01, 0.01);
+                                if (vy < 0) { vx = -vx; vy = -vy; }
 
-                            // ★修正: float ではなく double で受ける
-                            double vx = btmLine.Vx;
-                            double vy = btmLine.Vy;
-                            double x0 = btmLine.X1;
-                            double y0 = btmLine.Y1;
+                                _btmAxisPt1 = new CvPoint((int)(x0 - 500.0 * vx), (int)(y0 - 500.0 * vy));
+                                _btmAxisPt2 = new CvPoint((int)(x0 + 500.0 * vx), (int)(y0 + 500.0 * vy));
 
-                            // 描画用の軸線ベクトル (下向きに統一し、線を長く引く)
-                            if (vy < 0) { vx = -vx; vy = -vy; }
+                                double targetY = safeBtmRoi.Y + safeBtmRoi.Height / 2.0;
+                                double t = (targetY - y0) / vy;
+                                double btmCenterX = x0 + t * vx;
 
-                            // ★修正: 計算を完全に double で行い、最後に int キャストする
-                            _btmAxisPt1 = new CvPoint((int)(x0 - 500.0 * vx), (int)(y0 - 500.0 * vy));
-                            _btmAxisPt2 = new CvPoint((int)(x0 + 500.0 * vx), (int)(y0 + 500.0 * vy));
-
-                            // ROIのY方向中心における、下部部品の中心X座標
-                            double targetY = safeBtmRoi.Y + safeBtmRoi.Height / 2.0;
-                            double t = (targetY - y0) / vy;
-                            double btmCenterX = x0 + t * vx;
-
-                            _btmCenter = new CvPoint((int)btmCenterX, (int)targetY);
-
-                            double btm_tilt_rad = Math.Atan2(vx, vy);
-                            _lastAngle = (top_tilt_rad - btm_tilt_rad) * 180.0 / Math.PI;
+                                _btmCenter = new CvPoint((int)btmCenterX, (int)targetY);
+                                btm_tilt_rad = Math.Atan2(vx, vy);
+                                isBtmDetected = true;
+                            }
                         }
                     }
-                    else return 3;
 
-                    // 4. 垂線投影とズレ計算
-                    double dy = _btmCenter.Y - _topCenter.Y;
-                    double expected_btm_X = _topCenter.X - dy * Math.Tan(top_tilt_rad);
-                    _projectedBtm = new CvPoint((int)expected_btm_X, _btmCenter.Y);
-
-                    _lastXOffsetMm = (_btmCenter.X - expected_btm_X) * PixelToMmRatio;
-
-                    _isOffsetOk = Math.Abs(_lastXOffsetMm - TargetXOffsetMm) <= OffsetToleranceMm;
-                    _isAngleOk = Math.Abs(_lastAngle - TargetAngleDeg) <= AngleToleranceDeg;
-                    _lastResult = (_isOffsetOk && _isAngleOk) ? 1 : 2;
                     _hasValidData = true;
+
+                    // ==========================================
+                    // 4. 垂線投影・ズレ計算 ＆ 総合判定
+                    // ==========================================
+                    if (_detectedHoles.Count >= 2 && isBtmDetected)
+                    {
+                        _lastAngle = (top_tilt_rad - btm_tilt_rad) * 180.0 / Math.PI;
+
+                        double dy = _btmCenter.Y - _topCenter.Y;
+                        double expected_btm_X = _topCenter.X - dy * Math.Tan(top_tilt_rad);
+                        _projectedBtm = new CvPoint((int)expected_btm_X, _btmCenter.Y);
+
+                        _lastXOffsetMm = (_btmCenter.X - expected_btm_X) * PixelToMmRatio;
+
+                        _isOffsetOk = Math.Abs(_lastXOffsetMm - TargetXOffsetMm) <= OffsetToleranceMm;
+                        _isAngleOk = Math.Abs(_lastAngle - TargetAngleDeg) <= AngleToleranceDeg;
+                    }
+                    else
+                    {
+                        _isOffsetOk = false;
+                        _isAngleOk = false;
+                    }
+
+                    if (!_jigEdgeDetected || !IsJigOk) return 2;
+                    if (_detectedHoles.Count < 2) return 3;
+                    if (!isBtmDetected) return 3;
+
+                    _lastResult = (_isOffsetOk && _isAngleOk) ? 1 : 2;
                     return _lastResult;
                 }
             }
@@ -317,11 +336,9 @@ namespace _20260224SolderInspec
                 Cv2.DrawMarker(dispMat, _topCenter, Scalar.Red, MarkerTypes.Cross, 20, 2);
             }
 
-            if (IsJigOk && _detectedHoles.Count >= 2)
+            if (_detectedHoles.Count >= 2 && _btmCenter.X != 0 && _btmCenter.Y != 0)
             {
-                // ★修正: Point2f ではなく CvPoint をそのまま渡す
                 Cv2.Line(dispMat, _btmAxisPt1, _btmAxisPt2, new Scalar(255, 255, 0), 2, LineTypes.AntiAlias);
-
                 Cv2.Line(dispMat, _topCenter, _projectedBtm, Scalar.Magenta, 2, LineTypes.AntiAlias);
                 Cv2.DrawMarker(dispMat, _btmCenter, Scalar.Blue, MarkerTypes.Cross, 20, 2);
 
