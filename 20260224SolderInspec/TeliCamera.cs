@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using OpenCvSharp;
-// ご提示の動作実績のある名前空間を使用
 using Teli.TeliCamAPI.NET;
 using Teli.TeliCamAPI.NET.Utility;
 
@@ -9,15 +8,15 @@ namespace _20260224SolderInspec
 {
     public class TeliCamera : IDisposable
     {
-        private CameraSystem? camSystem;
-        private CameraDevice? camDevice;
+        private CameraSystem camSystem;
+        private CameraDevice camDevice;
         private AutoResetEvent imageReceivedEvent = new AutoResetEvent(false);
         private int maxPayloadSize = 0;
         private volatile bool keepCapturing = false;
-        private Thread? captureThread;
+        private Thread captureThread;
 
         // 画像処理側へ渡すイベント
-        public event EventHandler<Mat>? OnFrameCaptured;
+        public event EventHandler<Mat> OnFrameCaptured;
 
         public bool IsConnected => camDevice != null;
 
@@ -26,7 +25,7 @@ namespace _20260224SolderInspec
             try
             {
                 camSystem = new CameraSystem();
-                // BU160MCF（U3V）に対応
+                // BU160MCF（U3V）等に対応
                 if (camSystem.Initialize(CameraType.TypeU3v | CameraType.TypeGev) != CamApiStatus.Success) return false;
 
                 int camNum;
@@ -34,7 +33,33 @@ namespace _20260224SolderInspec
                 if (camNum == 0) return false;
 
                 camSystem.CreateDeviceObject(0, ref camDevice);
-                if (camDevice!.Open() != CamApiStatus.Success) return false;
+                if (camDevice.Open() != CamApiStatus.Success) return false;
+
+                // =================================================================
+                // ★カメラ本体の15FPS強制ロック（192FPSのデータ洪水を根本から防ぐ）
+                // =================================================================
+                try
+                {
+                    // 1. オート露出を「手動（Manual）」に固定する（ロック解除）
+                    camDevice.camControl.SetExposureTimeControl(CameraExposureTimeCtrl.Manual);
+
+                    // 2. フレームレートの制御を「手動（Manual）」に有効化する
+                    if (camDevice.IsSupportIIDC2)
+                    {
+                        camDevice.camControl.SetAcquisitionFrameRateControl(CameraAcqFrameRateCtrl.Manual);
+                    }
+
+                    // 3. フレームレートを「15.0」に強制固定！
+                    camDevice.camControl.SetAcquisitionFrameRate(15.0);
+
+                    System.Diagnostics.Debug.WriteLine("FPSを15.0に強制固定しました。");
+                }
+                catch (Exception ex)
+                {
+                    // 万が一カメラ側が対応していなくても、エラーで落ちずに検査へ進む
+                    System.Diagnostics.Debug.WriteLine($"FPS強制設定エラー: {ex.Message}");
+                }
+                // =================================================================
 
                 // 16バッファでストリーム開始準備
                 if (camDevice.camStream.Open(imageReceivedEvent, 16, 0, out maxPayloadSize) != CamApiStatus.Success) return false;
@@ -53,19 +78,22 @@ namespace _20260224SolderInspec
             if (keepCapturing) return;
             keepCapturing = true;
             captureThread = new Thread(CaptureLoop);
-            captureThread.IsBackground = true; // アプリ終了時にスレッドも終了させる
+            captureThread.IsBackground = true; // アプリ終了時にスレッドも道連れにして終了させる
             captureThread.Start();
         }
 
         public void StopCapture()
         {
             keepCapturing = false;
-            captureThread?.Join(500);
+            if (captureThread != null && captureThread.IsAlive)
+            {
+                captureThread.Join(500);
+            }
         }
 
         private void CaptureLoop()
         {
-            CameraImageInfo? imageInfo = null;
+            CameraImageInfo imageInfo = null;
             int bufferIndex;
 
             while (keepCapturing)
@@ -73,7 +101,7 @@ namespace _20260224SolderInspec
                 // 画像が来るまで待機（1秒タイムアウト）
                 if (imageReceivedEvent.WaitOne(1000))
                 {
-                    if (camDevice!.camStream.GetCurrentBufferIndex(out bufferIndex) == CamApiStatus.Success)
+                    if (camDevice.camStream.GetCurrentBufferIndex(out bufferIndex) == CamApiStatus.Success)
                     {
                         camDevice.camStream.LockBuffer(bufferIndex, ref imageInfo);
 
@@ -84,16 +112,15 @@ namespace _20260224SolderInspec
                                 int rows = (int)imageInfo.SizeY;
                                 int cols = (int)imageInfo.SizeX;
 
-                                // 指示通りの Mat.FromPixelData を使用（歪み回避のためBGR24へ変換）
-                                // まず変換後の受け皿となるMatを生成
+                                // 受け皿となるMatを生成（BGR24）
                                 using (Mat colorMat = new Mat(rows, cols, MatType.CV_8UC3))
                                 {
-                                    // ご提示のコードと同じシグネチャで変換を実行
+                                    // 東芝テリの公式Utilityで安全に画像フォーマットを変換
                                     CameraUtility.ConvertImage(
                                         DstPixelFormat.BGR24,
                                         imageInfo.PixelFormat,
                                         true,
-                                        colorMat.Data, // IntPtr
+                                        colorMat.Data,
                                         imageInfo.BufferPointer,
                                         imageInfo.SizeX,
                                         imageInfo.SizeY
@@ -103,7 +130,7 @@ namespace _20260224SolderInspec
                                     Mat grayMat = new Mat();
                                     Cv2.CvtColor(colorMat, grayMat, ColorConversionCodes.BGR2GRAY);
 
-                                    // イベント発火
+                                    // Form1へ画像を渡す
                                     OnFrameCaptured?.Invoke(this, grayMat);
                                 }
                             }
@@ -127,9 +154,15 @@ namespace _20260224SolderInspec
                 camDevice.camStream.Close();
                 camDevice.Close();
             }
-            camSystem?.Terminate();
+            if (camSystem != null)
+            {
+                camSystem.Terminate();
+            }
         }
 
-        public void Dispose() => Terminate();
+        public void Dispose()
+        {
+            Terminate();
+        }
     }
 }
