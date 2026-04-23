@@ -32,18 +32,16 @@ namespace _20260224SolderInspec
         private CheckBox _chkShowOverlay;
         private ComboBox _cmbTriggerMode, _cmbSaveMode;
 
-        // ★追加：運用タブ用コントロールと状態
         private Button _btnRunToggle;
-        private bool _isRunning = false; // 初期状態は「停止」
+        private bool _isRunning = false;
         private bool _requestErrorTest = false;
 
         private NumericUpDown _nudTriggerThreshold, _nudStabilityDuration, _nudResetThreshold;
         private NumericUpDown _nudRoiX, _nudRoiY, _nudRoiW, _nudRoiH;
         private NumericUpDown _nudSaveRoiX, _nudSaveRoiY, _nudSaveRoiW, _nudSaveRoiH;
 
-        // ★追加：ログ保存期間の設定
         private NumericUpDown _nudLogKeepDays;
-        private int _logKeepDays = 30; // デフォルト30日で自動削除
+        private int _logKeepDays = 30;
 
         private NumericUpDown _nudBtmRoiX, _nudBtmRoiY, _nudBtmRoiW, _nudBtmRoiH;
         private NumericUpDown _nudHolesX, _nudHolesY, _nudHolesW, _nudHolesH;
@@ -126,7 +124,6 @@ namespace _20260224SolderInspec
         {
             int y = 10;
 
-            // ★機能追加：運転開始・終了ボタン
             _btnRunToggle = new Button { Text = "▶ 運転開始 (START)", Location = new Point(10, y), Size = new Size(370, 60), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 16, FontStyle.Bold) };
             _btnRunToggle.Click += (s, e) => {
                 _isRunning = !_isRunning;
@@ -168,7 +165,6 @@ namespace _20260224SolderInspec
             btnTest.Click += (s, e) => _requestManualTest = true;
             tab.Controls.Add(btnTest);
 
-            // ★機能追加：強制NGテストボタン（PLCの異常処理確認用）
             Button btnTestNg = new Button { Text = "強制NGテスト", Location = new Point(200, y), Size = new Size(180, 50), BackColor = Color.Orange, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
             btnTestNg.Click += (s, e) => _requestErrorTest = true;
             tab.Controls.Add(btnTestNg);
@@ -221,14 +217,13 @@ namespace _20260224SolderInspec
             AddN("ROI X:", ref _nudRoiX, 0, 3000, _roi.X); AddN("ROI Y:", ref _nudRoiY, 0, 3000, _roi.Y);
             AddN("ROI W:", ref _nudRoiW, 1, 3000, _roi.Width); AddN("ROI H:", ref _nudRoiH, 1, 3000, _roi.Height); y += 10;
 
-            tab.Controls.Add(new Label { Text = "--- 画像保存設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
+            tab.Controls.Add(new Label { Text = "--- 画像・ログ保存設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
             _cmbSaveMode = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw + 50, 25), DropDownStyle = ComboBoxStyle.DropDownList };
             _cmbSaveMode.Items.AddRange(new object[] { "0: 保存しない", "1: NGのみ保存", "2: 全て保存" });
             _cmbSaveMode.SelectedIndex = _saveMode;
             _cmbSaveMode.SelectedIndexChanged += (s, e) => { if (!_isLoadingConfig) _saveMode = _cmbSaveMode.SelectedIndex; };
-            tab.Controls.Add(new Label { Text = "保存モード:", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); tab.Controls.Add(_cmbSaveMode); y += lh;
+            tab.Controls.Add(new Label { Text = "画像保存モード:", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); tab.Controls.Add(_cmbSaveMode); y += lh;
 
-            // ★機能追加：ログ保存日数の設定
             AddN("ログ保存期間(日) ※0で無期限:", ref _nudLogKeepDays, 0, 3650, _logKeepDays);
 
             AddN("Save ROI X:", ref _nudSaveRoiX, 0, 3000, _saveRoi.X); AddN("Save ROI Y:", ref _nudSaveRoiY, 0, 3000, _saveRoi.Y);
@@ -329,8 +324,10 @@ namespace _20260224SolderInspec
             if (_camera.Initialize()) _camera.StartCapture();
             _ = MonitorPlcTriggerAsync();
 
-            // ★機能追加：起動時に古いログをバックグラウンドで自動削除
             Task.Run(() => DeleteOldLogs());
+
+            // ★機能追加：起動時に本日のカウンターを自動復元する
+            RestoreDailyCounter();
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
@@ -340,10 +337,62 @@ namespace _20260224SolderInspec
             SaveConfig();
         }
 
-        // ★機能追加：古いログフォルダを削除するメソッド
+        // ★機能追加：日報ログ（CSV）への追記メソッド
+        private void AppendDailyLog(int result)
+        {
+            try
+            {
+                string dir = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd"));
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                string logFile = Path.Combine(dir, "InspectionLog.csv");
+                bool isNewFile = !File.Exists(logFile);
+
+                using (StreamWriter sw = new StreamWriter(logFile, true, System.Text.Encoding.UTF8))
+                {
+                    if (isNewFile)
+                    {
+                        // 初回作成時にヘッダーを書き込む
+                        sw.WriteLine("時刻,判定,総検査数,良品数(OK),不良数(NG)");
+                    }
+
+                    string resStr = (result == 1) ? "OK" : "NG";
+                    // 毎回の検査時刻と、その時点での累積カウントを記録する
+                    sw.WriteLine($"{DateTime.Now:HH:mm:ss},{resStr},{_totalCount},{_okCount},{_ngCount}");
+                }
+            }
+            catch { }
+        }
+
+        // ★機能追加：本日のカウンター復元メソッド
+        private void RestoreDailyCounter()
+        {
+            try
+            {
+                string logFile = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd"), "InspectionLog.csv");
+                if (File.Exists(logFile))
+                {
+                    // ファイルが存在すれば、最後の行を読み取ってカウンターにセット
+                    var lines = File.ReadAllLines(logFile).Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+                    if (lines.Count > 1)
+                    {
+                        var cols = lines.Last().Split(',');
+                        if (cols.Length >= 5)
+                        {
+                            int.TryParse(cols[2], out _totalCount);
+                            int.TryParse(cols[3], out _okCount);
+                            int.TryParse(cols[4], out _ngCount);
+                        }
+                    }
+                }
+                SafeInvoke(() => UpdateCounterDisplay());
+            }
+            catch { }
+        }
+
         private void DeleteOldLogs()
         {
-            if (_logKeepDays <= 0) return; // 0の場合は無期限保存
+            if (_logKeepDays <= 0) return;
             try
             {
                 if (!Directory.Exists(_logDirPath)) return;
@@ -362,7 +411,7 @@ namespace _20260224SolderInspec
                     }
                 }
             }
-            catch { /* 削除エラーは運用に影響を与えないため無視 */ }
+            catch { }
         }
 
         private async Task MonitorPlcTriggerAsync()
@@ -399,7 +448,6 @@ namespace _20260224SolderInspec
                     double b = _measurement.CalculateBrightness(frame, _roi);
                     if (isDebug) _measurement.UpdateDebugImageRealtime(frame, _saveRoi);
 
-                    // 通常の手動テスト
                     if (_requestManualTest)
                     {
                         _requestManualTest = false;
@@ -408,13 +456,11 @@ namespace _20260224SolderInspec
                         _pendingSaveResult = manualResult;
                     }
 
-                    // ★機能追加：強制NGテスト（通信確認用）
                     if (_requestErrorTest)
                     {
                         _requestErrorTest = false;
-                        int forceNgResult = 2; // 2 = NG
+                        int forceNgResult = 2;
 
-                        // PLCへ「NG」を送信し、トリガーもリセットする
                         _plc.SendResult(false);
                         if (_appSettings.TriggerMode == "Plc") Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
 
@@ -431,7 +477,6 @@ namespace _20260224SolderInspec
 
         private void UpdateStateMachine(Mat frame, double b, bool isDebug)
         {
-            // ★機能追加：_isRunning が false の時は一切のトリガーを受け付けない（ソフトウェアロック）
             bool isTriggered = _isRunning && (_appSettings.TriggerMode == "Plc" ? _plcTriggerReceived : (_triggerOnBright ? (b > _triggerThreshold) : (b < _triggerThreshold)));
             bool isReset = _isRunning && (_appSettings.TriggerMode == "Plc" ? false : (_triggerOnBright ? (b < _resetThreshold) : (b > _resetThreshold)));
 
@@ -459,7 +504,6 @@ namespace _20260224SolderInspec
                     break;
 
                 case STATE_STABILIZING:
-                    // 途中で停止ボタンが押されたら強制リセット
                     if (!_isRunning)
                     {
                         _currentState = STATE_WAITING;
@@ -576,7 +620,6 @@ namespace _20260224SolderInspec
 
             if (_lblStatus != null && !_lblStatus.IsDisposed)
             {
-                // ★機能追加：状態ラベルの「STOPPED」表示対応
                 if (!_isRunning)
                 {
                     _lblStatus.Text = "Status: STOPPED";
@@ -591,12 +634,11 @@ namespace _20260224SolderInspec
             if (_lblBrightness != null && !_lblBrightness.IsDisposed) _lblBrightness.Text = "Brightness: " + b.ToString("F1");
         }
 
-        // ★改修：タクト影響ゼロの非同期保存 ＆ JPEG高圧縮
+        // タクト影響ゼロの非同期保存 ＆ JPEG高圧縮
         private void SaveInspectionImage(Mat img, int res)
         {
             try
             {
-                // メインの検査サイクル（タクト）を止めないよう、画像のコピーを作って裏側(別スレッド)に投げる
                 Mat imgToSave = img.Clone();
 
                 Task.Run(() =>
@@ -613,25 +655,15 @@ namespace _20260224SolderInspec
                         using (Mat cropped = new Mat(imgToSave, crop))
                         using (Mat resized = new Mat())
                         {
-                            // 1. サイズを半分に縮小（容量 1/4）
                             Cv2.Resize(cropped, resized, new CvSize(cropped.Width / 2, cropped.Height / 2));
-
-                            // 2. JPEGの圧縮率(画質)を指定して極限まで軽くする（60〜70あたりがおすすめ）
-                            // ※100が最高画質。指定しないとデフォルトで95になり重くなります。
                             var p = new ImageEncodingParam(ImwriteFlags.JpegQuality, 65);
-
-                            // 保存実行
                             Cv2.ImWrite(path, resized, p);
                         }
                     }
                     catch { }
                     finally
                     {
-                        // 使い終わったコピー画像をメモリから確実に解放する
-                        if (imgToSave != null && !imgToSave.IsDisposed)
-                        {
-                            imgToSave.Dispose();
-                        }
+                        if (imgToSave != null && !imgToSave.IsDisposed) imgToSave.Dispose();
                     }
                 });
             }
@@ -643,7 +675,17 @@ namespace _20260224SolderInspec
             if (_lblBigResult == null || _lblBigResult.IsDisposed) return;
             _lblBigResult.Text = res == 1 ? "OK" : "NG";
             _lblBigResult.BackColor = res == 1 ? Color.LimeGreen : Color.Red;
-            if (!manual) { _totalCount++; if (res == 1) _okCount++; else _ngCount++; UpdateCounterDisplay(); }
+
+            // 手動テスト以外の場合のみカウンターを回し、ログを記録する
+            if (!manual)
+            {
+                _totalCount++;
+                if (res == 1) _okCount++; else _ngCount++;
+                UpdateCounterDisplay();
+
+                // ★機能追加：日報用CSVログの記録
+                AppendDailyLog(res);
+            }
         }
 
         private void UpdateCounterDisplay() { if (_lblTotal == null || _lblTotal.IsDisposed) return; _lblTotal.Text = "総検査数 : " + _totalCount; _lblOk.Text = "良品 (OK): " + _okCount; _lblNg.Text = "不良 (NG): " + _ngCount; }
@@ -660,7 +702,6 @@ namespace _20260224SolderInspec
             _roi = new CvRect((int)_nudRoiX.Value, (int)_nudRoiY.Value, (int)_nudRoiW.Value, (int)_nudRoiH.Value);
             _saveRoi = new CvRect((int)_nudSaveRoiX.Value, (int)_nudSaveRoiY.Value, (int)_nudSaveRoiW.Value, (int)_nudSaveRoiH.Value);
 
-            // ★UIからログ保存日数を取得
             _logKeepDays = (int)_nudLogKeepDays.Value;
 
             _measurement.BtmMeasureRoi = new CvRect((int)_nudBtmRoiX.Value, (int)_nudBtmRoiY.Value, (int)_nudBtmRoiW.Value, (int)_nudBtmRoiH.Value);
@@ -706,7 +747,6 @@ namespace _20260224SolderInspec
                 _roi = new CvRect(GetI("RoiX", _roi.X), GetI("RoiY", _roi.Y), GetI("RoiW", _roi.Width), GetI("RoiH", _roi.Height));
                 _saveRoi = new CvRect(GetI("SaveRoiX", _saveRoi.X), GetI("SaveRoiY", _saveRoi.Y), GetI("SaveRoiW", _saveRoi.Width), GetI("SaveRoiH", _saveRoi.Height));
 
-                // ★設定からログ保存日数を読み込み
                 _logKeepDays = GetI("LogKeepDays", _logKeepDays);
 
                 _measurement.HolesRoi = new CvRect(GetI("HolesX", _measurement.HolesRoi.X), GetI("HolesY", _measurement.HolesRoi.Y), GetI("HolesW", _measurement.HolesRoi.Width), GetI("HolesH", _measurement.HolesRoi.Height));
@@ -739,7 +779,6 @@ namespace _20260224SolderInspec
                 _nudRoiX.Value = _roi.X; _nudRoiY.Value = _roi.Y; _nudRoiW.Value = _roi.Width; _nudRoiH.Value = _roi.Height;
                 _nudSaveRoiX.Value = _saveRoi.X; _nudSaveRoiY.Value = _saveRoi.Y; _nudSaveRoiW.Value = _saveRoi.Width; _nudSaveRoiH.Value = _saveRoi.Height;
 
-                // ★UIへログ保存日数を反映
                 _nudLogKeepDays.Value = _logKeepDays;
 
                 _nudHolesX.Value = _measurement.HolesRoi.X; _nudHolesY.Value = _measurement.HolesRoi.Y; _nudHolesW.Value = _measurement.HolesRoi.Width; _nudHolesH.Value = _measurement.HolesRoi.Height;
@@ -782,7 +821,6 @@ namespace _20260224SolderInspec
                     sw.WriteLine("RoiX=" + _roi.X); sw.WriteLine("RoiY=" + _roi.Y); sw.WriteLine("RoiW=" + _roi.Width); sw.WriteLine("RoiH=" + _roi.Height);
                     sw.WriteLine("SaveRoiX=" + _saveRoi.X); sw.WriteLine("SaveRoiY=" + _saveRoi.Y); sw.WriteLine("SaveRoiW=" + _saveRoi.Width); sw.WriteLine("SaveRoiH=" + _saveRoi.Height);
 
-                    // ★設定ファイルへログ保存日数を保存
                     sw.WriteLine("LogKeepDays=" + _logKeepDays);
 
                     sw.WriteLine("HolesX=" + _measurement.HolesRoi.X); sw.WriteLine("HolesY=" + _measurement.HolesRoi.Y); sw.WriteLine("HolesW=" + _measurement.HolesRoi.Width); sw.WriteLine("HolesH=" + _measurement.HolesRoi.Height);
