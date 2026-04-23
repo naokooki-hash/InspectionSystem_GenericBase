@@ -43,6 +43,12 @@ namespace _20260224SolderInspec
         private NumericUpDown _nudLogKeepDays;
         private int _logKeepDays = 30;
 
+        // ★機能追加：自動起動関連の変数
+        private NumericUpDown _nudAutoStartCount;
+        private int _autoStartCount = 3;       // デフォルト：3回トリガーで自動起動
+        private int _missedTriggerCount = 0;   // 無視したトリガーのカウント
+        private bool _wasTriggeredLastFrame = false; // エッジ検出用
+
         private NumericUpDown _nudBtmRoiX, _nudBtmRoiY, _nudBtmRoiW, _nudBtmRoiH;
         private NumericUpDown _nudHolesX, _nudHolesY, _nudHolesW, _nudHolesH;
         private NumericUpDown _nudMinHoleArea, _nudMaxHoleArea, _nudHoleThresh, _nudMinCircularity;
@@ -127,6 +133,8 @@ namespace _20260224SolderInspec
             _btnRunToggle = new Button { Text = "▶ 運転開始 (START)", Location = new Point(10, y), Size = new Size(370, 60), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 16, FontStyle.Bold) };
             _btnRunToggle.Click += (s, e) => {
                 _isRunning = !_isRunning;
+                _missedTriggerCount = 0; // 手動切替時はカウントをリセット
+
                 if (_isRunning)
                 {
                     _btnRunToggle.Text = "■ 運転停止 (STOP)";
@@ -197,7 +205,12 @@ namespace _20260224SolderInspec
             AddN("PLC Delay(待機) ms:", ref _nudPlcDelayMs, 0, 5000, _plcDelayMs);
             y += 10;
 
-            tab.Controls.Add(new Label { Text = "--- 検査リトライ設定 (煙・ノイズ対策) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Red }); y += 22;
+            // ★機能追加：自動起動UI
+            tab.Controls.Add(new Label { Text = "--- ポカヨケ (自動起動) 設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Purple }); y += 22;
+            AddN("自動起動トリガー回数:", ref _nudAutoStartCount, 0, 100, _autoStartCount);
+            tab.Controls.Add(new Label { Text = "※0で無効。指定回数トリガーが来たら自動で運転開始します", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Gray }); y += 20;
+
+            tab.Controls.Add(new Label { Text = "--- 検査リトライ設定 (煙対策) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Red }); y += 22;
             AddN("最大リトライ回数:", ref _nudRetryCount, 0, 10, _maxRetryCount);
             AddN("リトライ間隔(ms):", ref _nudRetryDelayMs, 0, 5000, _retryDelayMs);
             y += 10;
@@ -325,8 +338,6 @@ namespace _20260224SolderInspec
             _ = MonitorPlcTriggerAsync();
 
             Task.Run(() => DeleteOldLogs());
-
-            // ★機能追加：起動時に本日のカウンターを自動復元する
             RestoreDailyCounter();
         }
 
@@ -337,7 +348,6 @@ namespace _20260224SolderInspec
             SaveConfig();
         }
 
-        // ★機能追加：日報ログ（CSV）への追記メソッド
         private void AppendDailyLog(int result)
         {
             try
@@ -350,21 +360,14 @@ namespace _20260224SolderInspec
 
                 using (StreamWriter sw = new StreamWriter(logFile, true, System.Text.Encoding.UTF8))
                 {
-                    if (isNewFile)
-                    {
-                        // 初回作成時にヘッダーを書き込む
-                        sw.WriteLine("時刻,判定,総検査数,良品数(OK),不良数(NG)");
-                    }
-
+                    if (isNewFile) sw.WriteLine("時刻,判定,総検査数,良品数(OK),不良数(NG)");
                     string resStr = (result == 1) ? "OK" : "NG";
-                    // 毎回の検査時刻と、その時点での累積カウントを記録する
                     sw.WriteLine($"{DateTime.Now:HH:mm:ss},{resStr},{_totalCount},{_okCount},{_ngCount}");
                 }
             }
             catch { }
         }
 
-        // ★機能追加：本日のカウンター復元メソッド
         private void RestoreDailyCounter()
         {
             try
@@ -372,7 +375,6 @@ namespace _20260224SolderInspec
                 string logFile = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd"), "InspectionLog.csv");
                 if (File.Exists(logFile))
                 {
-                    // ファイルが存在すれば、最後の行を読み取ってカウンターにセット
                     var lines = File.ReadAllLines(logFile).Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
                     if (lines.Count > 1)
                     {
@@ -404,10 +406,7 @@ namespace _20260224SolderInspec
                     string dirName = new DirectoryInfo(dir).Name;
                     if (DateTime.TryParseExact(dirName, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out DateTime dirDate))
                     {
-                        if (dirDate.Date < thresholdDate)
-                        {
-                            Directory.Delete(dir, true);
-                        }
+                        if (dirDate.Date < thresholdDate) Directory.Delete(dir, true);
                     }
                 }
             }
@@ -425,7 +424,7 @@ namespace _20260224SolderInspec
                     if (_plc.IsConnected)
                     {
                         int triggerValue = await Task.Run(() => _plc.ReadDevice(_appSettings.ReadDeviceAddress));
-                        if (triggerValue == 1 && _currentState == STATE_WAITING) _plcTriggerReceived = true;
+                        if (triggerValue == 1) _plcTriggerReceived = true; // 状態に関わらず拾う
                     }
                 }
                 await Task.Delay(_appSettings.InspectionIntervalMs);
@@ -475,15 +474,74 @@ namespace _20260224SolderInspec
             });
         }
 
+        // ★機能追加：自動起動のメインロジック
         private void UpdateStateMachine(Mat frame, double b, bool isDebug)
         {
-            bool isTriggered = _isRunning && (_appSettings.TriggerMode == "Plc" ? _plcTriggerReceived : (_triggerOnBright ? (b > _triggerThreshold) : (b < _triggerThreshold)));
-            bool isReset = _isRunning && (_appSettings.TriggerMode == "Plc" ? false : (_triggerOnBright ? (b < _resetThreshold) : (b > _resetThreshold)));
+            // まず純粋に「今トリガーが入っているか」を判定
+            bool rawTriggered = (_appSettings.TriggerMode == "Plc" ? _plcTriggerReceived : (_triggerOnBright ? (b > _triggerThreshold) : (b < _triggerThreshold)));
+            bool isReset = (_appSettings.TriggerMode == "Plc" ? false : (_triggerOnBright ? (b < _resetThreshold) : (b > _resetThreshold)));
 
+            // 立ち上がりエッジ（トリガーが入った瞬間）の判定
+            bool isTriggerEdge = rawTriggered && !_wasTriggeredLastFrame;
+            _wasTriggeredLastFrame = rawTriggered;
+
+            // === 停止中（STOPPED）の時の処理（自動起動ポカヨケ） ===
+            if (!_isRunning)
+            {
+                if (isTriggerEdge)
+                {
+                    if (_autoStartCount > 0)
+                    {
+                        _missedTriggerCount++;
+                        if (_missedTriggerCount >= _autoStartCount)
+                        {
+                            // ★指定回数に達したので、自動的に運転開始！
+                            _isRunning = true;
+                            _missedTriggerCount = 0;
+                            SafeInvoke(() => {
+                                _btnRunToggle.Text = "■ 運転停止 (STOP)";
+                                _btnRunToggle.BackColor = Color.Salmon;
+                            });
+                            // そのまま下の通常処理（稼働中ロジック）へ流すため return しない
+                        }
+                        else
+                        {
+                            // まだ指定回数に達していないのでカウントダウン表示
+                            SafeInvoke(() => lblStateUpdate($"STARTING SOON... ({_missedTriggerCount}/{_autoStartCount})", Color.Orange));
+
+                            // ★重要：PLCの場合は「ダミーのOK」を返してラインを止めないようにする
+                            if (_appSettings.TriggerMode == "Plc")
+                            {
+                                _plcTriggerReceived = false;
+                                _plc.SendResult(true);
+                                Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+                            }
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // 自動起動が無効(0)の場合は、永遠に無視し続ける（ダミーOKは返す）
+                        if (_appSettings.TriggerMode == "Plc")
+                        {
+                            _plcTriggerReceived = false;
+                            _plc.SendResult(true);
+                            Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+                        }
+                        return;
+                    }
+                }
+                else
+                {
+                    return; // 停止中でトリガーが無ければ何もしない
+                }
+            }
+
+            // === ここから下は稼働中（isRunning == true）の通常処理 ===
             switch (_currentState)
             {
                 case STATE_WAITING:
-                    if (isTriggered)
+                    if (rawTriggered)
                     {
                         _currentRetry = 0;
 
@@ -496,20 +554,17 @@ namespace _20260224SolderInspec
                         }
                         else
                         {
-                            _currentState = STATE_STABILIZING;
-                            _stabilityStartTime = DateTime.Now;
-                            SafeInvoke(() => lblStateUpdate("TESTING...", Color.Yellow));
+                            if (isTriggerEdge) // Visualモードはエッジの瞬間だけ反応
+                            {
+                                _currentState = STATE_STABILIZING;
+                                _stabilityStartTime = DateTime.Now;
+                                SafeInvoke(() => lblStateUpdate("TESTING...", Color.Yellow));
+                            }
                         }
                     }
                     break;
 
                 case STATE_STABILIZING:
-                    if (!_isRunning)
-                    {
-                        _currentState = STATE_WAITING;
-                        return;
-                    }
-
                     if (_appSettings.TriggerMode == "Plc")
                     {
                         double targetDelay = _currentRetry == 0 ? _plcDelayMs : _retryDelayMs;
@@ -634,7 +689,6 @@ namespace _20260224SolderInspec
             if (_lblBrightness != null && !_lblBrightness.IsDisposed) _lblBrightness.Text = "Brightness: " + b.ToString("F1");
         }
 
-        // タクト影響ゼロの非同期保存 ＆ JPEG高圧縮
         private void SaveInspectionImage(Mat img, int res)
         {
             try
@@ -676,14 +730,11 @@ namespace _20260224SolderInspec
             _lblBigResult.Text = res == 1 ? "OK" : "NG";
             _lblBigResult.BackColor = res == 1 ? Color.LimeGreen : Color.Red;
 
-            // 手動テスト以外の場合のみカウンターを回し、ログを記録する
             if (!manual)
             {
                 _totalCount++;
                 if (res == 1) _okCount++; else _ngCount++;
                 UpdateCounterDisplay();
-
-                // ★機能追加：日報用CSVログの記録
                 AppendDailyLog(res);
             }
         }
@@ -698,6 +749,9 @@ namespace _20260224SolderInspec
             _plcDelayMs = (int)_nudPlcDelayMs.Value;
             _maxRetryCount = (int)_nudRetryCount.Value;
             _retryDelayMs = (int)_nudRetryDelayMs.Value;
+
+            // ★UIから自動起動回数を取得
+            _autoStartCount = (int)_nudAutoStartCount.Value;
 
             _roi = new CvRect((int)_nudRoiX.Value, (int)_nudRoiY.Value, (int)_nudRoiW.Value, (int)_nudRoiH.Value);
             _saveRoi = new CvRect((int)_nudSaveRoiX.Value, (int)_nudSaveRoiY.Value, (int)_nudSaveRoiW.Value, (int)_nudSaveRoiH.Value);
@@ -743,6 +797,9 @@ namespace _20260224SolderInspec
                 _maxRetryCount = GetI("MaxRetryCount", _maxRetryCount);
                 _retryDelayMs = GetI("RetryDelayMs", _retryDelayMs);
 
+                // ★設定から自動起動回数を読み込み
+                _autoStartCount = GetI("AutoStartCount", _autoStartCount);
+
                 _resetThreshold = GetD("ResetThreshold", _resetThreshold); _saveMode = GetI("SaveMode", _saveMode);
                 _roi = new CvRect(GetI("RoiX", _roi.X), GetI("RoiY", _roi.Y), GetI("RoiW", _roi.Width), GetI("RoiH", _roi.Height));
                 _saveRoi = new CvRect(GetI("SaveRoiX", _saveRoi.X), GetI("SaveRoiY", _saveRoi.Y), GetI("SaveRoiW", _saveRoi.Width), GetI("SaveRoiH", _saveRoi.Height));
@@ -774,6 +831,9 @@ namespace _20260224SolderInspec
                 _nudPlcDelayMs.Value = _plcDelayMs;
                 _nudRetryCount.Value = _maxRetryCount;
                 _nudRetryDelayMs.Value = _retryDelayMs;
+
+                // ★UIへ自動起動回数を反映
+                _nudAutoStartCount.Value = _autoStartCount;
 
                 _nudResetThreshold.Value = (decimal)_resetThreshold;
                 _nudRoiX.Value = _roi.X; _nudRoiY.Value = _roi.Y; _nudRoiW.Value = _roi.Width; _nudRoiH.Value = _roi.Height;
@@ -816,6 +876,9 @@ namespace _20260224SolderInspec
                     sw.WriteLine("PlcDelayMs=" + _plcDelayMs);
                     sw.WriteLine("MaxRetryCount=" + _maxRetryCount);
                     sw.WriteLine("RetryDelayMs=" + _retryDelayMs);
+
+                    // ★設定ファイルへ自動起動回数を保存
+                    sw.WriteLine("AutoStartCount=" + _autoStartCount);
 
                     sw.WriteLine("ResetThreshold=" + _resetThreshold); sw.WriteLine("SaveMode=" + _saveMode);
                     sw.WriteLine("RoiX=" + _roi.X); sw.WriteLine("RoiY=" + _roi.Y); sw.WriteLine("RoiW=" + _roi.Width); sw.WriteLine("RoiH=" + _roi.Height);
