@@ -11,7 +11,6 @@ namespace _20260224SolderInspec
 {
     public class MeasurementCore
     {
-        // ★追加：エッジ間距離測定の有効/無効フラグ
         public bool EnableJigCheck { get; set; } = true;
 
         public double TargetXOffsetMm { get; set; } = 0.0;
@@ -144,6 +143,7 @@ namespace _20260224SolderInspec
                 Cv2.GaussianBlur(roiMat, blurred, new CvSize(3, 3), 0);
                 Cv2.Threshold(blurred, bin, EdgeThreshold, 255, ThresholdTypes.Binary);
 
+                // ★余計なガードを外し、完全に元のコードに復旧
                 Cv2.FindContours(bin, out CvPoint[][] contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
                 if (contours.Length == 0) return false;
 
@@ -170,7 +170,7 @@ namespace _20260224SolderInspec
                     else frame.CopyTo(gray);
 
                     // ==========================================
-                    // 1. 上部エッジ距離チェック (有効な場合のみ実行)
+                    // 1. 上部エッジ距離チェック
                     // ==========================================
                     _jigEdgeDetected = false;
                     IsJigOk = false;
@@ -203,6 +203,8 @@ namespace _20260224SolderInspec
                             Cv2.Threshold(blurred, bin, HoleThreshold, 255, ThresholdTypes.BinaryInv);
 
                             Cv2.FindContours(bin, out CvPoint[][] hContours, out _, RetrievalModes.List, ContourApproximationModes.ApproxSimple);
+
+                            // ★穴検出も、一番調子が良かった元のオリジナルコードに完全復旧
                             foreach (var c in hContours)
                             {
                                 double area = Cv2.ContourArea(c);
@@ -319,12 +321,15 @@ namespace _20260224SolderInspec
                         _isAngleOk = false;
                     }
 
-                    // ★ エッジチェックがONの時だけ、エッジエラーで弾く
-                    if (EnableJigCheck && (!_jigEdgeDetected || !IsJigOk)) return 2;
-
+                    // ★ 超重要修正：判定の優先順位を適正化
+                    // 1. まず、穴やBTMが見つからなければ「測定不能（return 3）」として待機状態を維持する
                     if (_detectedHoles.Count < 2) return 3;
                     if (!isBtmDetected) return 3;
 
+                    // 2. 穴が見つかった上で、エッジチェックがONでNGなら「不良品（return 2）」
+                    if (EnableJigCheck && (!_jigEdgeDetected || !IsJigOk)) return 2;
+
+                    // 3. すべてクリアしていれば、ズレと角度の判定結果を返す
                     _lastResult = (_isOffsetOk && _isAngleOk) ? 1 : 2;
                     return _lastResult;
                 }
@@ -359,7 +364,6 @@ namespace _20260224SolderInspec
                 Cv2.PutText(dispMat, angStr, new CvPoint(tx, ty + 20), HersheyFonts.HersheySimplex, 0.7, _isAngleOk ? Scalar.LimeGreen : Scalar.Red, 1);
             }
 
-            // ★ エッジチェックがONの時だけ描画する
             if (EnableJigCheck && _jigEdgeDetected)
             {
                 Scalar edgeCol = IsJigOk ? Scalar.LimeGreen : Scalar.Red;
