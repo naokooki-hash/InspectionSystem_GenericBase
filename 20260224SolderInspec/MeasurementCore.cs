@@ -11,6 +11,9 @@ namespace _20260224SolderInspec
 {
     public class MeasurementCore
     {
+        // ★追加：エッジ間距離測定の有効/無効フラグ
+        public bool EnableJigCheck { get; set; } = true;
+
         public double TargetXOffsetMm { get; set; } = 0.0;
         public double OffsetToleranceMm { get; set; } = 1.0;
         public double TargetAngleDeg { get; set; } = 0.0;
@@ -167,19 +170,22 @@ namespace _20260224SolderInspec
                     else frame.CopyTo(gray);
 
                     // ==========================================
-                    // 1. 上部エッジ距離チェック
+                    // 1. 上部エッジ距離チェック (有効な場合のみ実行)
                     // ==========================================
                     _jigEdgeDetected = false;
                     IsJigOk = false;
 
-                    if (DetectJigEdge(gray, JigLeftRoi, true, out _jigLeftEdgeX) &&
-                        DetectJigEdge(gray, JigRightRoi, false, out _jigRightEdgeX))
+                    if (EnableJigCheck)
                     {
-                        _jigEdgeDetected = true;
-                        double distancePx = Math.Abs(_jigRightEdgeX - _jigLeftEdgeX);
-                        LastJigDistanceMm = distancePx * PixelToMmRatio;
-                        if (TargetJigDistanceMm <= 0) TargetJigDistanceMm = LastJigDistanceMm;
-                        IsJigOk = (Math.Abs(LastJigDistanceMm - TargetJigDistanceMm) <= JigToleranceMm);
+                        if (DetectJigEdge(gray, JigLeftRoi, true, out _jigLeftEdgeX) &&
+                            DetectJigEdge(gray, JigRightRoi, false, out _jigRightEdgeX))
+                        {
+                            _jigEdgeDetected = true;
+                            double distancePx = Math.Abs(_jigRightEdgeX - _jigLeftEdgeX);
+                            LastJigDistanceMm = distancePx * PixelToMmRatio;
+                            if (TargetJigDistanceMm <= 0) TargetJigDistanceMm = LastJigDistanceMm;
+                            IsJigOk = (Math.Abs(LastJigDistanceMm - TargetJigDistanceMm) <= JigToleranceMm);
+                        }
                     }
 
                     // ==========================================
@@ -313,7 +319,9 @@ namespace _20260224SolderInspec
                         _isAngleOk = false;
                     }
 
-                    if (!_jigEdgeDetected || !IsJigOk) return 2;
+                    // ★ エッジチェックがONの時だけ、エッジエラーで弾く
+                    if (EnableJigCheck && (!_jigEdgeDetected || !IsJigOk)) return 2;
+
                     if (_detectedHoles.Count < 2) return 3;
                     if (!isBtmDetected) return 3;
 
@@ -351,7 +359,8 @@ namespace _20260224SolderInspec
                 Cv2.PutText(dispMat, angStr, new CvPoint(tx, ty + 20), HersheyFonts.HersheySimplex, 0.7, _isAngleOk ? Scalar.LimeGreen : Scalar.Red, 1);
             }
 
-            if (_jigEdgeDetected)
+            // ★ エッジチェックがONの時だけ描画する
+            if (EnableJigCheck && _jigEdgeDetected)
             {
                 Scalar edgeCol = IsJigOk ? Scalar.LimeGreen : Scalar.Red;
 

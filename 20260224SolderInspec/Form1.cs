@@ -29,9 +29,10 @@ namespace _20260224SolderInspec
         private PictureBox _pictureBox, _pictureBoxDebug;
         private TabControl _tabControl;
 
-        // ★追加：FPS表示用ラベル
         private Label _lblStatus, _lblBrightness, _lblFps, _lblBigResult, _lblTotal, _lblOk, _lblNg, _lblCurrentHoleDistPx;
-        private CheckBox _chkShowOverlay;
+
+        // ★追加：エッジ測定有効化チェックボックス
+        private CheckBox _chkShowOverlay, _chkEnableJigCheck;
         private ComboBox _cmbTriggerMode, _cmbSaveMode;
 
         private Button _btnRunToggle;
@@ -88,7 +89,6 @@ namespace _20260224SolderInspec
         private double _triggerThreshold = 100.0, _resetThreshold = 50.0;
         private string _logDirPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
 
-        // ★FPS・時間管理用変数
         private DateTime _lastUiUpdateTime = DateTime.MinValue;
         private DateTime _lastFrameProcessTime = DateTime.MinValue;
         private bool _isDebugTabActive = false;
@@ -128,7 +128,6 @@ namespace _20260224SolderInspec
             _lblStatus = new Label { Text = "Status: STOPPED", Location = new Point(px, 10), AutoSize = true, Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold), ForeColor = Color.Red };
             _lblBrightness = new Label { Text = "Brightness: 0.0", Location = new Point(px, 40), AutoSize = true, Font = new Font(this.Font.FontFamily, 12) };
 
-            // ★追加：FPSラベル
             _lblFps = new Label { Text = "FPS: --", Location = new Point(px + 180, 40), AutoSize = true, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold), ForeColor = Color.Blue };
 
             this.Controls.Add(_lblStatus); this.Controls.Add(_lblBrightness); this.Controls.Add(_lblFps);
@@ -296,6 +295,12 @@ namespace _20260224SolderInspec
             AddN("真円度しきい値:", ref _nudMinCircularity, 0, 1, (decimal)_measurement.MinCircularity, 2); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- エッジ間距離 測定設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
+
+            // ★追加：エッジ間距離測定のON/OFFチェックボックス
+            _chkEnableJigCheck = new CheckBox { Text = "エッジ間距離測定を有効にする", Location = new Point(10, y), AutoSize = true, Checked = _measurement.EnableJigCheck };
+            _chkEnableJigCheck.CheckedChanged += (s, e) => UpdateSettingsFromUI();
+            tab.Controls.Add(_chkEnableJigCheck); y += 28;
+
             AddRect("左エッジ ROI:", ref _nudJigLX, ref _nudJigLY, ref _nudJigLW, ref _nudJigLH, _measurement.JigLeftRoi);
             AddRect("右エッジ ROI:", ref _nudJigRX, ref _nudJigRY, ref _nudJigRW, ref _nudJigRH, _measurement.JigRightRoi);
 
@@ -441,7 +446,7 @@ namespace _20260224SolderInspec
                 if (_appSettings.TriggerMode == "Plc")
                 {
                     if (!_plc.IsConnected) await Task.Run(() => _plc.Connect());
-                    if (!_plc.IsConnected) await Task.Delay(1000); // 接続エラー時は1秒待つ
+                    if (!_plc.IsConnected) await Task.Delay(1000);
                     else
                     {
                         int triggerValue = await Task.Run(() => _plc.ReadDevice(_appSettings.ReadDeviceAddress));
@@ -462,7 +467,6 @@ namespace _20260224SolderInspec
         {
             if (!_isUiLoaded || this.IsDisposed || frame == null || frame.Empty()) return;
 
-            // ★FPSの計算と可視化
             _camFrameCount++;
             if ((DateTime.Now - _lastFpsTime).TotalMilliseconds >= 1000)
             {
@@ -471,15 +475,14 @@ namespace _20260224SolderInspec
                 _lastFpsTime = DateTime.Now;
             }
 
-            // ★アイドリング時の極限間引き（STOPPEDの時は 5 FPS まで落とす）
-            double limitMs = 33.0; // デフォルト 30 FPS
+            double limitMs = 33.0;
             if (!_isRunning && _autoStartCount == 0)
             {
-                limitMs = 200.0; // 停止中は 5 FPS で十分
+                limitMs = 200.0;
             }
             else if (_appSettings.TriggerMode == "Plc" && !_isRunning)
             {
-                limitMs = 200.0; // PLCモードかつ停止中も 5 FPS
+                limitMs = 200.0;
             }
 
             bool hasForceAction = _plcTriggerReceived || _requestManualTest || _requestErrorTest || _pendingSaveResult != -1;
@@ -502,7 +505,7 @@ namespace _20260224SolderInspec
             Task.Run(() => {
                 try
                 {
-                    _procFrameCount++; // 処理に回った回数をカウント
+                    _procFrameCount++;
 
                     bool isDebug = _isDebugTabActive;
                     double b = 0;
@@ -540,14 +543,13 @@ namespace _20260224SolderInspec
 
                     if (_pendingSaveResult != -1) forceUiUpdate = true;
 
-                    // UIの更新レート（稼働中なら15FPS、停止中なら5FPS）
                     double uiLimitMs = _isRunning ? 66.0 : 200.0;
 
                     if (forceUiUpdate || (DateTime.Now - _lastUiUpdateTime).TotalMilliseconds > uiLimitMs)
                     {
                         _lastUiUpdateTime = DateTime.Now;
                         SafeBeginInvoke(() => {
-                            _uiFrameCount++; // 描画回数をカウント
+                            _uiFrameCount++;
                             UpdateUIDisplay(frame, b, isDebug);
                             frame.Dispose();
                             _isProcessing = false;
@@ -722,8 +724,14 @@ namespace _20260224SolderInspec
                     Cv2.Rectangle(disp, _roi, Scalar.Yellow, 2);
                     Cv2.Rectangle(disp, _measurement.BtmMeasureRoi, new Scalar(0, 150, 150), 2);
                     Cv2.Rectangle(disp, _measurement.HolesRoi, Scalar.Orange, 2);
-                    Cv2.Rectangle(disp, _measurement.JigLeftRoi, Scalar.Yellow, 2);
-                    Cv2.Rectangle(disp, _measurement.JigRightRoi, Scalar.Yellow, 2);
+
+                    // ★ エッジチェックがONの時だけROIの四角を表示する
+                    if (_measurement.EnableJigCheck)
+                    {
+                        Cv2.Rectangle(disp, _measurement.JigLeftRoi, Scalar.Yellow, 2);
+                        Cv2.Rectangle(disp, _measurement.JigRightRoi, Scalar.Yellow, 2);
+                    }
+
                     Cv2.Rectangle(disp, _saveRoi, Scalar.LightSkyBlue, 1);
 
                     Cv2.Line(disp, new CvPoint(0, _measurement.SplitBoundaryY), new CvPoint(disp.Width, _measurement.SplitBoundaryY), Scalar.LightGray, 2);
@@ -767,7 +775,6 @@ namespace _20260224SolderInspec
             }
             if (_lblBrightness != null && !_lblBrightness.IsDisposed) _lblBrightness.Text = "Brightness: " + b.ToString("F1");
 
-            // ★FPSの表示更新
             if (_lblFps != null && !_lblFps.IsDisposed) _lblFps.Text = _currentFpsText;
         }
 
@@ -826,6 +833,11 @@ namespace _20260224SolderInspec
         private void UpdateSettingsFromUI()
         {
             if (_isLoadingConfig) return;
+
+            // ★ エッジ測定のON/OFFフラグをコアクラスに反映
+            if (_chkEnableJigCheck != null)
+                _measurement.EnableJigCheck = _chkEnableJigCheck.Checked;
+
             _triggerThreshold = (double)_nudTriggerThreshold.Value; _stabilityDurationMs = (int)_nudStabilityDuration.Value; _resetThreshold = (double)_nudResetThreshold.Value;
 
             _plcDelayMs = (int)_nudPlcDelayMs.Value;
@@ -871,6 +883,9 @@ namespace _20260224SolderInspec
                 int GetI(string k, int def) => d.TryGetValue(k, out var v) && int.TryParse(v, out int i) ? i : def;
                 double GetD(string k, double def) => d.TryGetValue(k, out var v) && double.TryParse(v, out double num) ? num : def;
 
+                // ★ エッジ測定ON/OFFのロード（記載がない過去のconfigファイルなら、安全のためtrueにする）
+                _measurement.EnableJigCheck = d.TryGetValue("EnableJigCheck", out var ej) ? bool.Parse(ej) : true;
+
                 _triggerOnBright = d.TryGetValue("TriggerOnBright", out var tb) ? bool.Parse(tb) : true;
                 _triggerThreshold = GetD("TriggerThreshold", _triggerThreshold); _stabilityDurationMs = GetI("StabilityDurationMs", _stabilityDurationMs);
 
@@ -905,6 +920,8 @@ namespace _20260224SolderInspec
                 _measurement.TargetXOffsetMm = GetD("TargetXOffsetMm", _measurement.TargetXOffsetMm); _measurement.OffsetToleranceMm = GetD("OffsetToleranceMm", _measurement.OffsetToleranceMm);
                 _measurement.TargetAngleDeg = GetD("TargetAngleDeg", _measurement.TargetAngleDeg); _measurement.AngleToleranceDeg = GetD("AngleToleranceDeg", _measurement.AngleToleranceDeg);
 
+                // UI反映
+                if (_chkEnableJigCheck != null) _chkEnableJigCheck.Checked = _measurement.EnableJigCheck;
                 _cmbTriggerMode.SelectedIndex = _triggerOnBright ? 0 : 1; _cmbSaveMode.SelectedIndex = _saveMode;
                 _nudTriggerThreshold.Value = (decimal)_triggerThreshold; _nudStabilityDuration.Value = _stabilityDurationMs;
 
@@ -949,6 +966,9 @@ namespace _20260224SolderInspec
             {
                 using (var sw = new StreamWriter(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt")))
                 {
+                    // ★ エッジ測定のON/OFFフラグのセーブ
+                    sw.WriteLine("EnableJigCheck=" + _measurement.EnableJigCheck);
+
                     sw.WriteLine("TriggerOnBright=" + _triggerOnBright); sw.WriteLine("TriggerThreshold=" + _triggerThreshold);
                     sw.WriteLine("StabilityDurationMs=" + _stabilityDurationMs);
 
