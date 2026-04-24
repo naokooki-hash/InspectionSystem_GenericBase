@@ -31,7 +31,6 @@ namespace _20260224SolderInspec
 
         private Label _lblStatus, _lblBrightness, _lblFps, _lblBigResult, _lblTotal, _lblOk, _lblNg, _lblCurrentHoleDistPx;
 
-        // ★追加：エッジ測定有効化チェックボックス
         private CheckBox _chkShowOverlay, _chkEnableJigCheck;
         private ComboBox _cmbTriggerMode, _cmbSaveMode;
 
@@ -53,10 +52,11 @@ namespace _20260224SolderInspec
 
         private NumericUpDown _nudBtmRoiX, _nudBtmRoiY, _nudBtmRoiW, _nudBtmRoiH;
         private NumericUpDown _nudHolesX, _nudHolesY, _nudHolesW, _nudHolesH;
-        private NumericUpDown _nudMinHoleArea, _nudMaxHoleArea, _nudHoleThresh, _nudMinCircularity;
+        private NumericUpDown _nudMinHoleArea, _nudMaxHoleArea, _nudMinCircularity;
 
-        private NumericUpDown _nudEdgeThresh;
-        private NumericUpDown _nudSplitY;
+        // ★ 4分割のUI用変数
+        private NumericUpDown _nudSplitX, _nudSplitY;
+        private NumericUpDown _nudThreshTL, _nudThreshTR, _nudThreshBL, _nudThreshBR;
 
         private NumericUpDown _nudJigLX, _nudJigLY, _nudJigLW, _nudJigLH;
         private NumericUpDown _nudJigRX, _nudJigRY, _nudJigRW, _nudJigRH;
@@ -93,9 +93,7 @@ namespace _20260224SolderInspec
         private DateTime _lastFrameProcessTime = DateTime.MinValue;
         private bool _isDebugTabActive = false;
 
-        private int _camFrameCount = 0;
-        private int _procFrameCount = 0;
-        private int _uiFrameCount = 0;
+        private int _camFrameCount = 0, _procFrameCount = 0, _uiFrameCount = 0;
         private DateTime _lastFpsTime = DateTime.Now;
         private string _currentFpsText = "FPS: --";
 
@@ -295,8 +293,6 @@ namespace _20260224SolderInspec
             AddN("真円度しきい値:", ref _nudMinCircularity, 0, 1, (decimal)_measurement.MinCircularity, 2); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- エッジ間距離 測定設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
-
-            // ★追加：エッジ間距離測定のON/OFFチェックボックス
             _chkEnableJigCheck = new CheckBox { Text = "エッジ間距離測定を有効にする", Location = new Point(10, y), AutoSize = true, Checked = _measurement.EnableJigCheck };
             _chkEnableJigCheck.CheckedChanged += (s, e) => UpdateSettingsFromUI();
             tab.Controls.Add(_chkEnableJigCheck); y += 28;
@@ -338,22 +334,39 @@ namespace _20260224SolderInspec
             _pictureBoxDebug = new PictureBox { Location = new Point(10, y), Size = new Size(380, 280), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black, BorderStyle = BorderStyle.FixedSingle };
             tab.Controls.Add(_pictureBoxDebug); y += 300;
 
-            tab.Controls.Add(new Label { Text = "--- 二値化 閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
+            tab.Controls.Add(new Label { Text = "--- ★4分割 二値化 閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
 
-            tab.Controls.Add(new Label { Text = "上下分割のY境界線:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+            // ★ 十字の境界線設定
+            tab.Controls.Add(new Label { Text = "上下分割 Y境界線:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
             _nudSplitY = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 3000, Value = _measurement.SplitBoundaryY };
             _nudSplitY.ValueChanged += (s, e) => UpdateSettingsFromUI();
             tab.Controls.Add(_nudSplitY); y += lh;
 
-            tab.Controls.Add(new Label { Text = "Edge Binary (上半分):", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            _nudEdgeThresh = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.EdgeThreshold };
-            _nudEdgeThresh.ValueChanged += (s, e) => UpdateSettingsFromUI();
-            tab.Controls.Add(_nudEdgeThresh); y += lh;
+            tab.Controls.Add(new Label { Text = "左右分割 X境界線:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+            _nudSplitX = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 3000, Value = _measurement.SplitBoundaryX };
+            _nudSplitX.ValueChanged += (s, e) => UpdateSettingsFromUI();
+            tab.Controls.Add(_nudSplitX); y += lh;
 
-            tab.Controls.Add(new Label { Text = "Hole Binary (下半分):", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            _nudHoleThresh = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.HoleThreshold };
-            _nudHoleThresh.ValueChanged += (s, e) => UpdateSettingsFromUI();
-            tab.Controls.Add(_nudHoleThresh); y += lh;
+            // ★ 4つのエリアの個別閾値
+            tab.Controls.Add(new Label { Text = "左上 (TL) 閾値:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+            _nudThreshTL = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshTopLeft };
+            _nudThreshTL.ValueChanged += (s, e) => UpdateSettingsFromUI();
+            tab.Controls.Add(_nudThreshTL); y += lh;
+
+            tab.Controls.Add(new Label { Text = "右上 (TR) 閾値:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+            _nudThreshTR = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshTopRight };
+            _nudThreshTR.ValueChanged += (s, e) => UpdateSettingsFromUI();
+            tab.Controls.Add(_nudThreshTR); y += lh;
+
+            tab.Controls.Add(new Label { Text = "左下 (BL) 閾値:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+            _nudThreshBL = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshBtmLeft };
+            _nudThreshBL.ValueChanged += (s, e) => UpdateSettingsFromUI();
+            tab.Controls.Add(_nudThreshBL); y += lh;
+
+            tab.Controls.Add(new Label { Text = "右下 (BR) 閾値:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+            _nudThreshBR = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshBtmRight };
+            _nudThreshBR.ValueChanged += (s, e) => UpdateSettingsFromUI();
+            tab.Controls.Add(_nudThreshBR); y += lh;
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -476,14 +489,8 @@ namespace _20260224SolderInspec
             }
 
             double limitMs = 33.0;
-            if (!_isRunning && _autoStartCount == 0)
-            {
-                limitMs = 200.0;
-            }
-            else if (_appSettings.TriggerMode == "Plc" && !_isRunning)
-            {
-                limitMs = 200.0;
-            }
+            if (!_isRunning && _autoStartCount == 0) limitMs = 200.0;
+            else if (_appSettings.TriggerMode == "Plc" && !_isRunning) limitMs = 200.0;
 
             bool hasForceAction = _plcTriggerReceived || _requestManualTest || _requestErrorTest || _pendingSaveResult != -1;
 
@@ -725,7 +732,6 @@ namespace _20260224SolderInspec
                     Cv2.Rectangle(disp, _measurement.BtmMeasureRoi, new Scalar(0, 150, 150), 2);
                     Cv2.Rectangle(disp, _measurement.HolesRoi, Scalar.Orange, 2);
 
-                    // ★ エッジチェックがONの時だけROIの四角を表示する
                     if (_measurement.EnableJigCheck)
                     {
                         Cv2.Rectangle(disp, _measurement.JigLeftRoi, Scalar.Yellow, 2);
@@ -734,7 +740,9 @@ namespace _20260224SolderInspec
 
                     Cv2.Rectangle(disp, _saveRoi, Scalar.LightSkyBlue, 1);
 
+                    // 十字線の描画
                     Cv2.Line(disp, new CvPoint(0, _measurement.SplitBoundaryY), new CvPoint(disp.Width, _measurement.SplitBoundaryY), Scalar.LightGray, 2);
+                    Cv2.Line(disp, new CvPoint(_measurement.SplitBoundaryX, 0), new CvPoint(_measurement.SplitBoundaryX, disp.Height), Scalar.LightGray, 2);
 
                     _measurement.DrawOverlay(disp);
                 }
@@ -834,9 +842,7 @@ namespace _20260224SolderInspec
         {
             if (_isLoadingConfig) return;
 
-            // ★ エッジ測定のON/OFFフラグをコアクラスに反映
-            if (_chkEnableJigCheck != null)
-                _measurement.EnableJigCheck = _chkEnableJigCheck.Checked;
+            if (_chkEnableJigCheck != null) _measurement.EnableJigCheck = _chkEnableJigCheck.Checked;
 
             _triggerThreshold = (double)_nudTriggerThreshold.Value; _stabilityDurationMs = (int)_nudStabilityDuration.Value; _resetThreshold = (double)_nudResetThreshold.Value;
 
@@ -856,9 +862,13 @@ namespace _20260224SolderInspec
             _measurement.MinHoleArea = (int)_nudMinHoleArea.Value; _measurement.MaxHoleArea = (int)_nudMaxHoleArea.Value;
             _measurement.MinCircularity = (double)_nudMinCircularity.Value;
 
+            // ★ 4分割UIの値を取得
+            _measurement.SplitBoundaryX = (int)_nudSplitX.Value;
             _measurement.SplitBoundaryY = (int)_nudSplitY.Value;
-            _measurement.EdgeThreshold = (int)_nudEdgeThresh.Value;
-            _measurement.HoleThreshold = (int)_nudHoleThresh.Value;
+            _measurement.ThreshTopLeft = (int)_nudThreshTL.Value;
+            _measurement.ThreshTopRight = (int)_nudThreshTR.Value;
+            _measurement.ThreshBtmLeft = (int)_nudThreshBL.Value;
+            _measurement.ThreshBtmRight = (int)_nudThreshBR.Value;
 
             _measurement.JigLeftRoi = new CvRect((int)_nudJigLX.Value, (int)_nudJigLY.Value, (int)_nudJigLW.Value, (int)_nudJigLH.Value);
             _measurement.JigRightRoi = new CvRect((int)_nudJigRX.Value, (int)_nudJigRY.Value, (int)_nudJigRW.Value, (int)_nudJigRH.Value);
@@ -883,7 +893,6 @@ namespace _20260224SolderInspec
                 int GetI(string k, int def) => d.TryGetValue(k, out var v) && int.TryParse(v, out int i) ? i : def;
                 double GetD(string k, double def) => d.TryGetValue(k, out var v) && double.TryParse(v, out double num) ? num : def;
 
-                // ★ エッジ測定ON/OFFのロード（記載がない過去のconfigファイルなら、安全のためtrueにする）
                 _measurement.EnableJigCheck = d.TryGetValue("EnableJigCheck", out var ej) ? bool.Parse(ej) : true;
 
                 _triggerOnBright = d.TryGetValue("TriggerOnBright", out var tb) ? bool.Parse(tb) : true;
@@ -905,9 +914,15 @@ namespace _20260224SolderInspec
                 _measurement.MinHoleArea = GetI("MinHoleArea", _measurement.MinHoleArea); _measurement.MaxHoleArea = GetI("MaxHoleArea", _measurement.MaxHoleArea);
                 _measurement.MinCircularity = GetD("MinCirc", _measurement.MinCircularity);
 
+                // ★ 4分割設定のロード（古い2分割の config だった場合は自動的に変換して引き継ぐ）
+                _measurement.SplitBoundaryX = GetI("SplitBoundaryX", 320);
                 _measurement.SplitBoundaryY = GetI("SplitBoundaryY", _measurement.SplitBoundaryY);
-                _measurement.EdgeThreshold = GetI("EdgeThresh", _measurement.EdgeThreshold);
-                _measurement.HoleThreshold = GetI("HoleThresh", _measurement.HoleThreshold);
+                int oldEdge = GetI("EdgeThresh", 12);
+                int oldHole = GetI("HoleThresh", 51);
+                _measurement.ThreshTopLeft = GetI("ThreshTL", oldEdge);
+                _measurement.ThreshTopRight = GetI("ThreshTR", oldEdge);
+                _measurement.ThreshBtmLeft = GetI("ThreshBL", oldHole);
+                _measurement.ThreshBtmRight = GetI("ThreshBR", oldHole);
 
                 _measurement.BtmMeasureRoi = new CvRect(GetI("BtmRoiX", _measurement.BtmMeasureRoi.X), GetI("BtmRoiY", _measurement.BtmMeasureRoi.Y), GetI("BtmRoiW", _measurement.BtmMeasureRoi.Width), GetI("BtmRoiH", _measurement.BtmMeasureRoi.Height));
                 _measurement.JigLeftRoi = new CvRect(GetI("JigLX", _measurement.JigLeftRoi.X), GetI("JigLY", _measurement.JigLeftRoi.Y), GetI("JigLW", _measurement.JigLeftRoi.Width), GetI("JigLH", _measurement.JigLeftRoi.Height));
@@ -941,9 +956,13 @@ namespace _20260224SolderInspec
                 _nudMinHoleArea.Value = _measurement.MinHoleArea; _nudMaxHoleArea.Value = _measurement.MaxHoleArea;
                 _nudMinCircularity.Value = (decimal)_measurement.MinCircularity;
 
+                // ★ 4分割のUI反映
+                _nudSplitX.Value = _measurement.SplitBoundaryX;
                 _nudSplitY.Value = _measurement.SplitBoundaryY;
-                _nudEdgeThresh.Value = _measurement.EdgeThreshold;
-                _nudHoleThresh.Value = _measurement.HoleThreshold;
+                _nudThreshTL.Value = _measurement.ThreshTopLeft;
+                _nudThreshTR.Value = _measurement.ThreshTopRight;
+                _nudThreshBL.Value = _measurement.ThreshBtmLeft;
+                _nudThreshBR.Value = _measurement.ThreshBtmRight;
 
                 _nudBtmRoiX.Value = _measurement.BtmMeasureRoi.X; _nudBtmRoiY.Value = _measurement.BtmMeasureRoi.Y; _nudBtmRoiW.Value = _measurement.BtmMeasureRoi.Width; _nudBtmRoiH.Value = _measurement.BtmMeasureRoi.Height;
                 _nudJigLX.Value = _measurement.JigLeftRoi.X; _nudJigLY.Value = _measurement.JigLeftRoi.Y; _nudJigLW.Value = _measurement.JigLeftRoi.Width; _nudJigLH.Value = _measurement.JigLeftRoi.Height;
@@ -966,7 +985,6 @@ namespace _20260224SolderInspec
             {
                 using (var sw = new StreamWriter(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt")))
                 {
-                    // ★ エッジ測定のON/OFFフラグのセーブ
                     sw.WriteLine("EnableJigCheck=" + _measurement.EnableJigCheck);
 
                     sw.WriteLine("TriggerOnBright=" + _triggerOnBright); sw.WriteLine("TriggerThreshold=" + _triggerThreshold);
@@ -988,9 +1006,13 @@ namespace _20260224SolderInspec
                     sw.WriteLine("MinHoleArea=" + _measurement.MinHoleArea); sw.WriteLine("MaxHoleArea=" + _measurement.MaxHoleArea);
                     sw.WriteLine("MinCirc=" + _measurement.MinCircularity);
 
+                    // ★ 4分割設定のセーブ
+                    sw.WriteLine("SplitBoundaryX=" + _measurement.SplitBoundaryX);
                     sw.WriteLine("SplitBoundaryY=" + _measurement.SplitBoundaryY);
-                    sw.WriteLine("EdgeThresh=" + _measurement.EdgeThreshold);
-                    sw.WriteLine("HoleThresh=" + _measurement.HoleThreshold);
+                    sw.WriteLine("ThreshTL=" + _measurement.ThreshTopLeft);
+                    sw.WriteLine("ThreshTR=" + _measurement.ThreshTopRight);
+                    sw.WriteLine("ThreshBL=" + _measurement.ThreshBtmLeft);
+                    sw.WriteLine("ThreshBR=" + _measurement.ThreshBtmRight);
 
                     sw.WriteLine("BtmRoiX=" + _measurement.BtmMeasureRoi.X); sw.WriteLine("BtmRoiY=" + _measurement.BtmMeasureRoi.Y); sw.WriteLine("BtmRoiW=" + _measurement.BtmMeasureRoi.Width); sw.WriteLine("BtmRoiH=" + _measurement.BtmMeasureRoi.Height);
                     sw.WriteLine("JigLX=" + _measurement.JigLeftRoi.X); sw.WriteLine("JigLY=" + _measurement.JigLeftRoi.Y); sw.WriteLine("JigLW=" + _measurement.JigLeftRoi.Width); sw.WriteLine("JigLH=" + _measurement.JigLeftRoi.Height);
@@ -1004,7 +1026,7 @@ namespace _20260224SolderInspec
             }
             catch (Exception ex)
             {
-                MessageBox.Show("設定ファイルの保存に失敗しました。\n\n" + ex.Message + "\n\n※Cドライブ直下などにフォルダを移動してください。", "保存エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("設定ファイルの保存に失敗しました。\n\n" + ex.Message, "保存エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
