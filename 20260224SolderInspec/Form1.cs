@@ -32,7 +32,6 @@ namespace _20260224SolderInspec
         private Label _lblStatus, _lblBrightness, _lblFps, _lblBigResult, _lblTotal, _lblOk, _lblNg, _lblCurrentHoleDistPx;
 
         private CheckBox _chkShowOverlay, _chkEnableJigCheck;
-        // ★追加：並列検査用の独立チェックボックス
         private CheckBox _chkEnableOuterTiltCheck, _chkEnableHoleCheck;
 
         private ComboBox _cmbTriggerMode, _cmbSaveMode;
@@ -54,13 +53,17 @@ namespace _20260224SolderInspec
         private bool _wasTriggeredLastFrame = false;
 
         private NumericUpDown _nudBtmRoiX, _nudBtmRoiY, _nudBtmRoiW, _nudBtmRoiH;
+
+        // ★追加：BTM内側の赤枠用
+        private NumericUpDown _nudBtmInnerLX, _nudBtmInnerLY, _nudBtmInnerLW, _nudBtmInnerLH;
+        private NumericUpDown _nudBtmInnerRX, _nudBtmInnerRY, _nudBtmInnerRW, _nudBtmInnerRH;
+
         private NumericUpDown _nudHolesX, _nudHolesY, _nudHolesW, _nudHolesH;
         private NumericUpDown _nudMinHoleArea, _nudMaxHoleArea, _nudMinCircularity;
 
         private NumericUpDown _nudTiltLX, _nudTiltLY, _nudTiltLW, _nudTiltLH;
         private NumericUpDown _nudTiltRX, _nudTiltRY, _nudTiltRW, _nudTiltRH;
 
-        // ★追加：外形専用閾値UI
         private NumericUpDown _nudThreshOuterL, _nudThreshOuterR;
 
         private NumericUpDown _nudSplitX, _nudSplitY;
@@ -70,7 +73,6 @@ namespace _20260224SolderInspec
         private NumericUpDown _nudJigRX, _nudJigRY, _nudJigRW, _nudJigRH;
         private NumericUpDown _nudJigTarget, _nudJigTolerance, _nudPixelToMm;
 
-        // ★追加：モード別の目標値UI
         private NumericUpDown _nudOuterTargetX, _nudOuterOffsetX, _nudOuterTargetA, _nudOuterOffsetA;
         private NumericUpDown _nudTargetXOffset, _nudOffsetTolerance, _nudTargetAngle, _nudAngleTolerance;
         private NumericUpDown _nudActualWidthMm;
@@ -264,7 +266,7 @@ namespace _20260224SolderInspec
                 tab.Controls.Add(nx); tab.Controls.Add(ny); tab.Controls.Add(nw); tab.Controls.Add(nh); y += lh;
             }
 
-            tab.Controls.Add(new Label { Text = "--- 検査モード 選択 (複数ONで並列実行) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Magenta, Font = new Font(this.Font, FontStyle.Bold) }); y += 22;
+            tab.Controls.Add(new Label { Text = "--- 検査モード 選択 (複数ONで並列・OR判定) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Magenta, Font = new Font(this.Font, FontStyle.Bold) }); y += 22;
             _chkEnableJigCheck = new CheckBox { Text = "エッジ間距離測定を有効にする", Location = new Point(10, y), AutoSize = true, Checked = _measurement.EnableJigCheck };
             _chkEnableJigCheck.CheckedChanged += (s, e) => UpdateSettingsFromUI(); tab.Controls.Add(_chkEnableJigCheck); y += 22;
             _chkEnableOuterTiltCheck = new CheckBox { Text = "【モードA】 外形エッジで製品の傾き・ズレを検査する", Location = new Point(10, y), AutoSize = true, Checked = _measurement.EnableOuterTiltCheck, ForeColor = Color.Teal };
@@ -296,8 +298,11 @@ namespace _20260224SolderInspec
             AddN("エッジ目標距離(mm):", ref _nudJigTarget, 0, 500, (decimal)_measurement.TargetJigDistanceMm, 2, 0.1M);
             AddN("エッジ許容誤差(mm):", ref _nudJigTolerance, 0, 50, (decimal)_measurement.JigToleranceMm, 2, 0.1M); y += 10;
 
+            // ★追加：BTM内側の赤枠用コントロール
             tab.Controls.Add(new Label { Text = "--- 下部測定 ROI ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkGoldenrod }); y += 22;
-            AddRect("Btm 線 ROI:", ref _nudBtmRoiX, ref _nudBtmRoiY, ref _nudBtmRoiW, ref _nudBtmRoiH, _measurement.BtmMeasureRoi); y += 10;
+            AddRect("Btm線 ROI(黄):", ref _nudBtmRoiX, ref _nudBtmRoiY, ref _nudBtmRoiW, ref _nudBtmRoiH, _measurement.BtmMeasureRoi);
+            AddRect("Btm内側左 ROI(赤):", ref _nudBtmInnerLX, ref _nudBtmInnerLY, ref _nudBtmInnerLW, ref _nudBtmInnerLH, _measurement.BtmInnerLeftRoi);
+            AddRect("Btm内側右 ROI(赤):", ref _nudBtmInnerRX, ref _nudBtmInnerRY, ref _nudBtmInnerRW, ref _nudBtmInnerRH, _measurement.BtmInnerRightRoi); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- キャリブレーション (Pixel/mm比率) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkOrange }); y += 22;
             _lblCurrentHoleDistPx = new Label { Text = "現在の穴/エッジ間距離: 0.0 px", Location = new Point(10, y), Size = new Size(300, 20), ForeColor = Color.DarkOrange, Font = new Font(this.Font, FontStyle.Bold) };
@@ -423,7 +428,6 @@ namespace _20260224SolderInspec
                     if (rawTriggered)
                     {
                         _currentRetry = 0;
-
                         // ★状態の復元：もし直前のリトライで「外形→穴」の救済フォールバックをしていたら、ここでUIの状態に完全リセットする
                         if (_chkEnableOuterTiltCheck != null) _measurement.EnableOuterTiltCheck = _chkEnableOuterTiltCheck.Checked;
                         if (_chkEnableHoleCheck != null) _measurement.EnableHoleCheck = _chkEnableHoleCheck.Checked;
@@ -441,7 +445,7 @@ namespace _20260224SolderInspec
                         {
                             int inspectResult = _measurement.Inspect(frame, _saveRoi, isDebug);
 
-                            // ★ハイブリッド救済フォールバック（外形のみONで運用している場合の救済措置）
+                            // ★フォールバック（外形のみONで運用している場合の救済措置。両方ONならInspect内で解決するため不要ですが念のため）
                             if (inspectResult != 1 && _currentRetry >= _maxRetryCount && _measurement.EnableOuterTiltCheck && !_measurement.EnableHoleCheck)
                             {
                                 _measurement.EnableOuterTiltCheck = false; _measurement.EnableHoleCheck = true;
@@ -463,7 +467,6 @@ namespace _20260224SolderInspec
                             {
                                 int inspectResult = _measurement.Inspect(frame, _saveRoi, isDebug);
 
-                                // ★ハイブリッド救済フォールバック
                                 if (inspectResult != 1 && _currentRetry >= _maxRetryCount && _measurement.EnableOuterTiltCheck && !_measurement.EnableHoleCheck)
                                 {
                                     _measurement.EnableOuterTiltCheck = false; _measurement.EnableHoleCheck = true;
@@ -499,6 +502,11 @@ namespace _20260224SolderInspec
                 {
                     Cv2.Rectangle(disp, _roi, Scalar.Yellow, 2);
                     Cv2.Rectangle(disp, _measurement.BtmMeasureRoi, new Scalar(0, 150, 150), 2);
+
+                    // ★内側BTM（赤色）の描画
+                    Cv2.Rectangle(disp, _measurement.BtmInnerLeftRoi, new Scalar(0, 0, 255), 2);
+                    Cv2.Rectangle(disp, _measurement.BtmInnerRightRoi, new Scalar(0, 0, 255), 2);
+
                     if (_measurement.EnableOuterTiltCheck) { Cv2.Rectangle(disp, _measurement.TiltLeftRoi, Scalar.Cyan, 2); Cv2.Rectangle(disp, _measurement.TiltRightRoi, Scalar.Cyan, 2); }
                     if (_measurement.EnableHoleCheck) { Cv2.Rectangle(disp, _measurement.HolesRoi, Scalar.Orange, 2); }
                     if (_measurement.EnableJigCheck) { Cv2.Rectangle(disp, _measurement.JigLeftRoi, Scalar.Yellow, 2); Cv2.Rectangle(disp, _measurement.JigRightRoi, Scalar.Yellow, 2); }
@@ -547,6 +555,11 @@ namespace _20260224SolderInspec
             _measurement.TargetOuterAngleDeg = (double)_nudOuterTargetA.Value; _measurement.OuterAngleToleranceDeg = (double)_nudOuterOffsetA.Value;
 
             _measurement.BtmMeasureRoi = new CvRect((int)_nudBtmRoiX.Value, (int)_nudBtmRoiY.Value, (int)_nudBtmRoiW.Value, (int)_nudBtmRoiH.Value);
+
+            // ★追加：BTM内側の取得
+            _measurement.BtmInnerLeftRoi = new CvRect((int)_nudBtmInnerLX.Value, (int)_nudBtmInnerLY.Value, (int)_nudBtmInnerLW.Value, (int)_nudBtmInnerLH.Value);
+            _measurement.BtmInnerRightRoi = new CvRect((int)_nudBtmInnerRX.Value, (int)_nudBtmInnerRY.Value, (int)_nudBtmInnerRW.Value, (int)_nudBtmInnerRH.Value);
+
             _measurement.HolesRoi = new CvRect((int)_nudHolesX.Value, (int)_nudHolesY.Value, (int)_nudHolesW.Value, (int)_nudHolesH.Value);
             _measurement.MinHoleArea = (int)_nudMinHoleArea.Value; _measurement.MaxHoleArea = (int)_nudMaxHoleArea.Value; _measurement.MinCircularity = (double)_nudMinCircularity.Value;
             _measurement.SplitBoundaryX = (int)_nudSplitX.Value; _measurement.SplitBoundaryY = (int)_nudSplitY.Value;
@@ -573,12 +586,9 @@ namespace _20260224SolderInspec
 
                 _measurement.EnableJigCheck = d.TryGetValue("EnableJigCheck", out var ej) ? bool.Parse(ej) : true;
 
-                // ★過去のConfigとの互換性対応
                 if (d.TryGetValue("UseOuterEdgeForTilt", out var uoe))
                 {
-                    bool useOuter = bool.Parse(uoe);
-                    _measurement.EnableOuterTiltCheck = useOuter;
-                    _measurement.EnableHoleCheck = !useOuter;
+                    bool useOuter = bool.Parse(uoe); _measurement.EnableOuterTiltCheck = useOuter; _measurement.EnableHoleCheck = !useOuter;
                 }
                 else
                 {
@@ -602,6 +612,12 @@ namespace _20260224SolderInspec
                 _measurement.TargetOuterAngleDeg = GetD("TargetOuterAngleDeg", _measurement.TargetOuterAngleDeg);
                 _measurement.OuterAngleToleranceDeg = GetD("OuterAngleToleranceDeg", _measurement.OuterAngleToleranceDeg);
 
+                _measurement.BtmMeasureRoi = new CvRect(GetI("BtmRoiX", _measurement.BtmMeasureRoi.X), GetI("BtmRoiY", _measurement.BtmMeasureRoi.Y), GetI("BtmRoiW", _measurement.BtmMeasureRoi.Width), GetI("BtmRoiH", _measurement.BtmMeasureRoi.Height));
+
+                // ★追加：BTM内側のロード
+                _measurement.BtmInnerLeftRoi = new CvRect(GetI("BtmInnerLX", _measurement.BtmInnerLeftRoi.X), GetI("BtmInnerLY", _measurement.BtmInnerLeftRoi.Y), GetI("BtmInnerLW", _measurement.BtmInnerLeftRoi.Width), GetI("BtmInnerLH", _measurement.BtmInnerLeftRoi.Height));
+                _measurement.BtmInnerRightRoi = new CvRect(GetI("BtmInnerRX", _measurement.BtmInnerRightRoi.X), GetI("BtmInnerRY", _measurement.BtmInnerRightRoi.Y), GetI("BtmInnerRW", _measurement.BtmInnerRightRoi.Width), GetI("BtmInnerRH", _measurement.BtmInnerRightRoi.Height));
+
                 _measurement.HolesRoi = new CvRect(GetI("HolesX", _measurement.HolesRoi.X), GetI("HolesY", _measurement.HolesRoi.Y), GetI("HolesW", _measurement.HolesRoi.Width), GetI("HolesH", _measurement.HolesRoi.Height));
                 _measurement.MinHoleArea = GetI("MinHoleArea", _measurement.MinHoleArea); _measurement.MaxHoleArea = GetI("MaxHoleArea", _measurement.MaxHoleArea);
                 _measurement.MinCircularity = GetD("MinCirc", _measurement.MinCircularity);
@@ -610,7 +626,6 @@ namespace _20260224SolderInspec
                 _measurement.ThreshTopLeft = GetI("ThreshTL", oldEdge); _measurement.ThreshTopRight = GetI("ThreshTR", oldEdge);
                 _measurement.ThreshBtmLeft = GetI("ThreshBL", oldHole); _measurement.ThreshBtmRight = GetI("ThreshBR", oldHole);
 
-                _measurement.BtmMeasureRoi = new CvRect(GetI("BtmRoiX", _measurement.BtmMeasureRoi.X), GetI("BtmRoiY", _measurement.BtmMeasureRoi.Y), GetI("BtmRoiW", _measurement.BtmMeasureRoi.Width), GetI("BtmRoiH", _measurement.BtmMeasureRoi.Height));
                 _measurement.JigLeftRoi = new CvRect(GetI("JigLX", _measurement.JigLeftRoi.X), GetI("JigLY", _measurement.JigLeftRoi.Y), GetI("JigLW", _measurement.JigLeftRoi.Width), GetI("JigLH", _measurement.JigLeftRoi.Height));
                 _measurement.JigRightRoi = new CvRect(GetI("JigRX", _measurement.JigRightRoi.X), GetI("JigRY", _measurement.JigRightRoi.Y), GetI("JigRW", _measurement.JigRightRoi.Width), GetI("JigRH", _measurement.JigRightRoi.Height));
                 _measurement.TargetJigDistanceMm = GetD("JigTargetMm", _measurement.TargetJigDistanceMm); _measurement.JigToleranceMm = GetD("JigTolMm", _measurement.JigToleranceMm);
@@ -618,7 +633,6 @@ namespace _20260224SolderInspec
                 _measurement.TargetXOffsetMm = GetD("TargetXOffsetMm", _measurement.TargetXOffsetMm); _measurement.OffsetToleranceMm = GetD("OffsetToleranceMm", _measurement.OffsetToleranceMm);
                 _measurement.TargetAngleDeg = GetD("TargetAngleDeg", _measurement.TargetAngleDeg); _measurement.AngleToleranceDeg = GetD("AngleToleranceDeg", _measurement.AngleToleranceDeg);
 
-                // UIへ反映
                 if (_chkEnableJigCheck != null) _chkEnableJigCheck.Checked = _measurement.EnableJigCheck;
                 if (_chkEnableOuterTiltCheck != null) _chkEnableOuterTiltCheck.Checked = _measurement.EnableOuterTiltCheck;
                 if (_chkEnableHoleCheck != null) _chkEnableHoleCheck.Checked = _measurement.EnableHoleCheck;
@@ -637,13 +651,18 @@ namespace _20260224SolderInspec
                 _nudOuterTargetX.Value = (decimal)_measurement.TargetOuterXOffsetMm; _nudOuterOffsetX.Value = (decimal)_measurement.OuterOffsetToleranceMm;
                 _nudOuterTargetA.Value = (decimal)_measurement.TargetOuterAngleDeg; _nudOuterOffsetA.Value = (decimal)_measurement.OuterAngleToleranceDeg;
 
+                _nudBtmRoiX.Value = _measurement.BtmMeasureRoi.X; _nudBtmRoiY.Value = _measurement.BtmMeasureRoi.Y; _nudBtmRoiW.Value = _measurement.BtmMeasureRoi.Width; _nudBtmRoiH.Value = _measurement.BtmMeasureRoi.Height;
+
+                // ★追加：BTM内側のUI反映
+                _nudBtmInnerLX.Value = _measurement.BtmInnerLeftRoi.X; _nudBtmInnerLY.Value = _measurement.BtmInnerLeftRoi.Y; _nudBtmInnerLW.Value = _measurement.BtmInnerLeftRoi.Width; _nudBtmInnerLH.Value = _measurement.BtmInnerLeftRoi.Height;
+                _nudBtmInnerRX.Value = _measurement.BtmInnerRightRoi.X; _nudBtmInnerRY.Value = _measurement.BtmInnerRightRoi.Y; _nudBtmInnerRW.Value = _measurement.BtmInnerRightRoi.Width; _nudBtmInnerRH.Value = _measurement.BtmInnerRightRoi.Height;
+
                 _nudHolesX.Value = _measurement.HolesRoi.X; _nudHolesY.Value = _measurement.HolesRoi.Y; _nudHolesW.Value = _measurement.HolesRoi.Width; _nudHolesH.Value = _measurement.HolesRoi.Height;
                 _nudMinHoleArea.Value = _measurement.MinHoleArea; _nudMaxHoleArea.Value = _measurement.MaxHoleArea; _nudMinCircularity.Value = (decimal)_measurement.MinCircularity;
                 _nudSplitX.Value = _measurement.SplitBoundaryX; _nudSplitY.Value = _measurement.SplitBoundaryY;
                 _nudThreshTL.Value = _measurement.ThreshTopLeft; _nudThreshTR.Value = _measurement.ThreshTopRight;
                 _nudThreshBL.Value = _measurement.ThreshBtmLeft; _nudThreshBR.Value = _measurement.ThreshBtmRight;
 
-                _nudBtmRoiX.Value = _measurement.BtmMeasureRoi.X; _nudBtmRoiY.Value = _measurement.BtmMeasureRoi.Y; _nudBtmRoiW.Value = _measurement.BtmMeasureRoi.Width; _nudBtmRoiH.Value = _measurement.BtmMeasureRoi.Height;
                 _nudJigLX.Value = _measurement.JigLeftRoi.X; _nudJigLY.Value = _measurement.JigLeftRoi.Y; _nudJigLW.Value = _measurement.JigLeftRoi.Width; _nudJigLH.Value = _measurement.JigLeftRoi.Height;
                 _nudJigRX.Value = _measurement.JigRightRoi.X; _nudJigRY.Value = _measurement.JigRightRoi.Y; _nudJigRW.Value = _measurement.JigRightRoi.Width; _nudJigRH.Value = _measurement.JigRightRoi.Height;
 
@@ -680,6 +699,12 @@ namespace _20260224SolderInspec
                     sw.WriteLine("TargetOuterXOffsetMm=" + _measurement.TargetOuterXOffsetMm); sw.WriteLine("OuterOffsetToleranceMm=" + _measurement.OuterOffsetToleranceMm);
                     sw.WriteLine("TargetOuterAngleDeg=" + _measurement.TargetOuterAngleDeg); sw.WriteLine("OuterAngleToleranceDeg=" + _measurement.OuterAngleToleranceDeg);
 
+                    sw.WriteLine("BtmRoiX=" + _measurement.BtmMeasureRoi.X); sw.WriteLine("BtmRoiY=" + _measurement.BtmMeasureRoi.Y); sw.WriteLine("BtmRoiW=" + _measurement.BtmMeasureRoi.Width); sw.WriteLine("BtmRoiH=" + _measurement.BtmMeasureRoi.Height);
+
+                    // ★追加：BTM内側のセーブ
+                    sw.WriteLine("BtmInnerLX=" + _measurement.BtmInnerLeftRoi.X); sw.WriteLine("BtmInnerLY=" + _measurement.BtmInnerLeftRoi.Y); sw.WriteLine("BtmInnerLW=" + _measurement.BtmInnerLeftRoi.Width); sw.WriteLine("BtmInnerLH=" + _measurement.BtmInnerLeftRoi.Height);
+                    sw.WriteLine("BtmInnerRX=" + _measurement.BtmInnerRightRoi.X); sw.WriteLine("BtmInnerRY=" + _measurement.BtmInnerRightRoi.Y); sw.WriteLine("BtmInnerRW=" + _measurement.BtmInnerRightRoi.Width); sw.WriteLine("BtmInnerRH=" + _measurement.BtmInnerRightRoi.Height);
+
                     sw.WriteLine("HolesX=" + _measurement.HolesRoi.X); sw.WriteLine("HolesY=" + _measurement.HolesRoi.Y); sw.WriteLine("HolesW=" + _measurement.HolesRoi.Width); sw.WriteLine("HolesH=" + _measurement.HolesRoi.Height);
                     sw.WriteLine("MinHoleArea=" + _measurement.MinHoleArea); sw.WriteLine("MaxHoleArea=" + _measurement.MaxHoleArea);
                     sw.WriteLine("MinCirc=" + _measurement.MinCircularity);
@@ -687,7 +712,6 @@ namespace _20260224SolderInspec
                     sw.WriteLine("ThreshTL=" + _measurement.ThreshTopLeft); sw.WriteLine("ThreshTR=" + _measurement.ThreshTopRight);
                     sw.WriteLine("ThreshBL=" + _measurement.ThreshBtmLeft); sw.WriteLine("ThreshBR=" + _measurement.ThreshBtmRight);
 
-                    sw.WriteLine("BtmRoiX=" + _measurement.BtmMeasureRoi.X); sw.WriteLine("BtmRoiY=" + _measurement.BtmMeasureRoi.Y); sw.WriteLine("BtmRoiW=" + _measurement.BtmMeasureRoi.Width); sw.WriteLine("BtmRoiH=" + _measurement.BtmMeasureRoi.Height);
                     sw.WriteLine("JigLX=" + _measurement.JigLeftRoi.X); sw.WriteLine("JigLY=" + _measurement.JigLeftRoi.Y); sw.WriteLine("JigLW=" + _measurement.JigLeftRoi.Width); sw.WriteLine("JigLH=" + _measurement.JigLeftRoi.Height);
                     sw.WriteLine("JigRX=" + _measurement.JigRightRoi.X); sw.WriteLine("JigRY=" + _measurement.JigRightRoi.Y); sw.WriteLine("JigRW=" + _measurement.JigRightRoi.Width); sw.WriteLine("JigRH=" + _measurement.JigRightRoi.Height);
 

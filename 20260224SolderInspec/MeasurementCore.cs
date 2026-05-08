@@ -26,7 +26,7 @@ namespace _20260224SolderInspec
         public double TargetOuterAngleDeg { get; set; } = 0.0;
         public double OuterAngleToleranceDeg { get; set; } = 2.0;
 
-        // 【モードB】穴・下部線専用パラメータ（既存互換）
+        // 【モードB】穴・下部線専用パラメータ
         public int SplitBoundaryX { get; set; } = 320;
         public int SplitBoundaryY { get; set; } = 570;
         public int ThreshTopLeft { get; set; } = 12;
@@ -35,6 +35,11 @@ namespace _20260224SolderInspec
         public int ThreshBtmRight { get; set; } = 51;
 
         public CvRect BtmMeasureRoi { get; set; } = new CvRect(250, 350, 150, 80);
+
+        // ★追加：下部の内側線（赤枠）用のROI
+        public CvRect BtmInnerLeftRoi { get; set; } = new CvRect(350, 420, 80, 120);
+        public CvRect BtmInnerRightRoi { get; set; } = new CvRect(550, 420, 80, 120);
+
         public CvRect HolesRoi { get; set; } = new CvRect(250, 350, 600, 200);
         public int MinHoleArea { get; set; } = 300;
         public int MaxHoleArea { get; set; } = 3000;
@@ -69,6 +74,12 @@ namespace _20260224SolderInspec
 
         private CvPoint _btmCenter = new CvPoint(0, 0);
         private CvPoint _btmAxisPt1, _btmAxisPt2;
+
+        // ★追加：内側BTM用の状態
+        private bool _useInnerBtm = false;
+        private bool _btmInnerEdgesFound = false;
+        private CvPoint _btmInnerLeftPt1, _btmInnerLeftPt2, _btmInnerRightPt1, _btmInnerRightPt2;
+
         private CvPoint _projectedBtmHole, _projectedBtmOuter;
 
         private readonly object _imageLock = new object();
@@ -79,8 +90,6 @@ namespace _20260224SolderInspec
         private bool _isHoleOffsetOk = false, _isHoleAngleOk = false;
         private bool _isOuterOffsetOk = false, _isOuterAngleOk = false;
         private bool _hasValidData = false;
-
-        // ★修正：うっかり消してしまっていた判定結果用の変数を復活！
         private int _lastResult = 0;
 
         public void GetDebugImage(Mat dst)
@@ -330,8 +339,13 @@ namespace _20260224SolderInspec
                                 }
                             }
 
-                            // 3. 下部(BTM)基準線の検出
-                            bool isBtmDetected = false; double btm_tilt_rad = 0;
+                            // ==========================================
+                            // 3. 下部(BTM)基準線の検出（外形と内側の2パターンで勝負）
+                            // ==========================================
+                            bool isBtmOuterDetected = false; double btm_tilt_rad_outer = 0;
+                            CvPoint btmOuterCenter = new CvPoint(0, 0);
+
+                            // 3A. 従来の外形線（黄色枠）
                             CvRect safeBtmRoi = BtmMeasureRoi & new CvRect(0, 0, binNormal.Width, binNormal.Height);
                             if (safeBtmRoi.Width > 0 && safeBtmRoi.Height > 0)
                             {
@@ -351,29 +365,94 @@ namespace _20260224SolderInspec
                                         double vx = btmLine.Vx, vy = btmLine.Vy, x0 = btmLine.X1, y0 = btmLine.Y1;
                                         if (vy < 0) { vx = -vx; vy = -vy; }
 
-                                        _btmAxisPt1 = new CvPoint((int)(x0 - 500.0 * vx), (int)(y0 - 500.0 * vy));
-                                        _btmAxisPt2 = new CvPoint((int)(x0 + 500.0 * vx), (int)(y0 + 500.0 * vy));
-
                                         double targetY = safeBtmRoi.Y + safeBtmRoi.Height / 2.0;
                                         double btmCenterX = x0 + ((targetY - y0) / vy) * vx;
 
-                                        _btmCenter = new CvPoint((int)btmCenterX, (int)targetY);
-                                        btm_tilt_rad = Math.Atan2(vx, vy);
-                                        isBtmDetected = true;
+                                        btmOuterCenter = new CvPoint((int)btmCenterX, (int)targetY);
+                                        btm_tilt_rad_outer = Math.Atan2(vx, vy);
+                                        isBtmOuterDetected = true;
                                     }
                                 }
                             }
 
+                            // 3B. 追加：内側の線（赤色枠）
+                            bool isBtmInnerDetected = false; double btm_tilt_rad_inner = 0;
+                            CvPoint btmInnerCenter = new CvPoint(0, 0);
+                            _btmInnerEdgesFound = false;
+
+                            // 内側のエッジ（金属と穴の境界）を探すため、走査方向を逆に設定して金属エッジを拾う
+                            bool lInnerFound = FindVerticalEdgeLine(gray, BtmInnerLeftRoi, false, ThreshBtmLeft, out double ilx0, out double ily0, out double ilvx, out double ilvy);
+                            bool rInnerFound = FindVerticalEdgeLine(gray, BtmInnerRightRoi, true, ThreshBtmRight, out double irx0, out double iry0, out double irvx, out double irvy);
+
+                            if (lInnerFound && rInnerFound)
+                            {
+                                _btmInnerEdgesFound = true;
+                                double lAngle = Math.Atan2(ilvx, ilvy);
+                                double rAngle = Math.Atan2(irvx, irvy);
+                                btm_tilt_rad_inner = (lAngle + rAngle) / 2.0;
+
+                                _btmInnerLeftPt1 = new CvPoint((int)(ilx0 - 500 * ilvx), (int)(ily0 - 500 * ilvy));
+                                _btmInnerLeftPt2 = new CvPoint((int)(ilx0 + 500 * ilvx), (int)(ily0 + 500 * ilvy));
+                                _btmInnerRightPt1 = new CvPoint((int)(irx0 - 500 * irvx), (int)(iry0 - 500 * irvy));
+                                _btmInnerRightPt2 = new CvPoint((int)(irx0 + 500 * irvx), (int)(iry0 + 500 * irvy));
+
+                                double refY = (BtmInnerLeftRoi.Y + BtmInnerLeftRoi.Height / 2.0 + BtmInnerRightRoi.Y + BtmInnerRightRoi.Height / 2.0) / 2.0;
+                                double lX = ilx0 + ((refY - ily0) / ilvy) * ilvx;
+                                double rX = irx0 + ((refY - iry0) / irvy) * irvx;
+                                btmInnerCenter = new CvPoint((int)((lX + rX) / 2.0), (int)refY);
+                                isBtmInnerDetected = true;
+                            }
+
+                            // 3C. 比較して角度（誤差）が少ない方を最終的なBTMとして採用する
+                            _useInnerBtm = false;
+                            bool isBtmDetected = false;
+                            double btm_tilt_rad = 0;
+
+                            if (isBtmOuterDetected && isBtmInnerDetected)
+                            {
+                                // 両方見つかった場合は、角度が0（垂直）に近い方を信用する
+                                if (Math.Abs(btm_tilt_rad_inner) < Math.Abs(btm_tilt_rad_outer))
+                                {
+                                    _useInnerBtm = true;
+                                }
+                            }
+                            else if (isBtmInnerDetected)
+                            {
+                                _useInnerBtm = true;
+                            }
+
+                            if (isBtmOuterDetected || isBtmInnerDetected)
+                            {
+                                isBtmDetected = true;
+                                if (_useInnerBtm)
+                                {
+                                    _btmCenter = btmInnerCenter;
+                                    btm_tilt_rad = btm_tilt_rad_inner;
+                                }
+                                else
+                                {
+                                    _btmCenter = btmOuterCenter;
+                                    btm_tilt_rad = btm_tilt_rad_outer;
+                                }
+
+                                // 表示用に最終採用された中心軸を生成
+                                double final_vx = Math.Sin(btm_tilt_rad);
+                                double final_vy = Math.Cos(btm_tilt_rad);
+                                _btmAxisPt1 = new CvPoint((int)(_btmCenter.X - 500 * final_vx), (int)(_btmCenter.Y - 500 * final_vy));
+                                _btmAxisPt2 = new CvPoint((int)(_btmCenter.X + 500 * final_vx), (int)(_btmCenter.Y + 500 * final_vy));
+                            }
+
                             _hasValidData = true;
 
-                            // 4. 並列計算と総合判定
-                            bool isHoleOk = true, isOuterOk = true, isJigOkFlag = true;
+                            // ==========================================
+                            // 4. 並列計算と総合判定（ORロジック）
+                            // ==========================================
+                            bool isHoleOk = false, isOuterOk = false, isJigOkFlag = true;
 
                             if (EnableJigCheck) { if (!_jigEdgeDetected || !IsJigOk) isJigOkFlag = false; }
 
-                            if (EnableOuterTiltCheck)
+                            if (EnableOuterTiltCheck && _tiltEdgesFound && isBtmDetected)
                             {
-                                if (!_tiltEdgesFound || !isBtmDetected) return 3; // 検出不能
                                 _lastOuterAngle = (outer_tilt_rad - btm_tilt_rad) * 180.0 / Math.PI;
                                 double expected_btm_X = _outerTopCenter.X - (_btmCenter.Y - _outerTopCenter.Y) * Math.Tan(outer_tilt_rad);
                                 _projectedBtmOuter = new CvPoint((int)expected_btm_X, _btmCenter.Y);
@@ -381,12 +460,11 @@ namespace _20260224SolderInspec
 
                                 _isOuterOffsetOk = Math.Abs(_lastOuterOffsetMm - TargetOuterXOffsetMm) <= OuterOffsetToleranceMm;
                                 _isOuterAngleOk = Math.Abs(_lastOuterAngle - TargetOuterAngleDeg) <= OuterAngleToleranceDeg;
-                                if (!_isOuterOffsetOk || !_isOuterAngleOk) isOuterOk = false;
+                                if (_isOuterOffsetOk && _isOuterAngleOk) isOuterOk = true;
                             }
 
-                            if (EnableHoleCheck)
+                            if (EnableHoleCheck && _detectedHoles.Count >= 2 && isBtmDetected)
                             {
-                                if (_detectedHoles.Count < 2 || !isBtmDetected) return 3; // 検出不能
                                 _lastHoleAngle = (hole_tilt_rad - btm_tilt_rad) * 180.0 / Math.PI;
                                 double expected_btm_X = _holeTopCenter.X - (_btmCenter.Y - _holeTopCenter.Y) * Math.Tan(hole_tilt_rad);
                                 _projectedBtmHole = new CvPoint((int)expected_btm_X, _btmCenter.Y);
@@ -394,13 +472,37 @@ namespace _20260224SolderInspec
 
                                 _isHoleOffsetOk = Math.Abs(_lastHoleOffsetMm - TargetXOffsetMm) <= OffsetToleranceMm;
                                 _isHoleAngleOk = Math.Abs(_lastHoleAngle - TargetAngleDeg) <= AngleToleranceDeg;
-                                if (!_isHoleOffsetOk || !_isHoleAngleOk) isHoleOk = false;
+                                if (_isHoleOffsetOk && _isHoleAngleOk) isHoleOk = true;
                             }
 
-                            if (!EnableHoleCheck && !EnableOuterTiltCheck && !EnableJigCheck) { if (!isBtmDetected) return 3; }
+                            // いずれの条件も計算できなかった場合は測定不能
+                            if (!isBtmDetected) return 3;
+                            if (EnableOuterTiltCheck && !_tiltEdgesFound && !EnableHoleCheck) return 3;
+                            if (EnableHoleCheck && _detectedHoles.Count < 2 && !EnableOuterTiltCheck) return 3;
+                            if (EnableOuterTiltCheck && EnableHoleCheck && !_tiltEdgesFound && _detectedHoles.Count < 2) return 3;
 
-                            // 有効になっている全ての検査がOKなら総合OKとする
-                            _lastResult = (isHoleOk && isOuterOk && isJigOkFlag) ? 1 : 2;
+                            if (!isJigOkFlag) return 2;
+
+                            // ★最終判定：2と3の検査で「どちらかが良品」ならOK（払い出し）とする
+                            bool finalOk = false;
+                            if (EnableOuterTiltCheck && EnableHoleCheck)
+                            {
+                                finalOk = isOuterOk || isHoleOk; // OR判定！
+                            }
+                            else if (EnableOuterTiltCheck)
+                            {
+                                finalOk = isOuterOk;
+                            }
+                            else if (EnableHoleCheck)
+                            {
+                                finalOk = isHoleOk;
+                            }
+                            else
+                            {
+                                finalOk = true; // 上部検査が両方OFFならBTMとJIGのみでOK
+                            }
+
+                            _lastResult = finalOk ? 1 : 2;
                             return _lastResult;
                         }
                     }
@@ -413,11 +515,23 @@ namespace _20260224SolderInspec
         {
             if (!_hasValidData) return;
 
-            // BTMの描画
+            // 内側BTMの描画（常に赤線で表示）
+            if (_btmInnerEdgesFound)
+            {
+                Cv2.Line(dispMat, _btmInnerLeftPt1, _btmInnerLeftPt2, Scalar.Red, 2, LineTypes.AntiAlias);
+                Cv2.Line(dispMat, _btmInnerRightPt1, _btmInnerRightPt2, Scalar.Red, 2, LineTypes.AntiAlias);
+            }
+
+            // 採用されたBTM軸の描画
             if (_btmCenter.X != 0)
             {
-                Cv2.Line(dispMat, _btmAxisPt1, _btmAxisPt2, new Scalar(255, 255, 0), 2, LineTypes.AntiAlias);
+                Scalar axisCol = _useInnerBtm ? Scalar.Pink : new Scalar(0, 255, 255);
+                Cv2.Line(dispMat, _btmAxisPt1, _btmAxisPt2, axisCol, 2, LineTypes.AntiAlias);
                 Cv2.DrawMarker(dispMat, _btmCenter, Scalar.Blue, MarkerTypes.Cross, 20, 2);
+
+                string usedStr = _useInnerBtm ? "BTM: Inner (Red)" : "BTM: Outer (Yellow)";
+                Cv2.PutText(dispMat, usedStr, new CvPoint(_btmCenter.X + 20, _btmCenter.Y + 20), HersheyFonts.HersheySimplex, 0.7, Scalar.Black, 3);
+                Cv2.PutText(dispMat, usedStr, new CvPoint(_btmCenter.X + 20, _btmCenter.Y + 20), HersheyFonts.HersheySimplex, 0.7, axisCol, 1);
             }
 
             // モードA: 外形の描画
