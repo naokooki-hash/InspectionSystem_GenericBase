@@ -32,6 +32,9 @@ namespace _20260224SolderInspec
         private Label _lblStatus, _lblBrightness, _lblFps, _lblBigResult, _lblTotal, _lblOk, _lblNg, _lblCurrentHoleDistPx;
 
         private CheckBox _chkShowOverlay, _chkEnableJigCheck;
+        // ★追加：外形エッジモードのチェックボックス
+        private CheckBox _chkTiltModeOuterEdge;
+
         private ComboBox _cmbTriggerMode, _cmbSaveMode;
 
         private Button _btnRunToggle;
@@ -53,6 +56,10 @@ namespace _20260224SolderInspec
         private NumericUpDown _nudBtmRoiX, _nudBtmRoiY, _nudBtmRoiW, _nudBtmRoiH;
         private NumericUpDown _nudHolesX, _nudHolesY, _nudHolesW, _nudHolesH;
         private NumericUpDown _nudMinHoleArea, _nudMaxHoleArea, _nudMinCircularity;
+
+        // ★追加：外形エッジ検出用のROI
+        private NumericUpDown _nudTiltLX, _nudTiltLY, _nudTiltLW, _nudTiltLH;
+        private NumericUpDown _nudTiltRX, _nudTiltRY, _nudTiltRW, _nudTiltRH;
 
         private NumericUpDown _nudSplitX, _nudSplitY;
         private NumericUpDown _nudThreshTL, _nudThreshTR, _nudThreshBL, _nudThreshBR;
@@ -199,7 +206,6 @@ namespace _20260224SolderInspec
         {
             int y = 10, lw = 150, cw = 100, lh = 28;
 
-            // ★修正：引数に「decimal step = 1M」を追加し、Increment（刻み幅）に設定！
             void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M)
             {
                 tab.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(lw, 20) });
@@ -240,7 +246,6 @@ namespace _20260224SolderInspec
             _cmbTriggerMode.SelectedIndexChanged += (s, e) => { if (!_isLoadingConfig) _triggerOnBright = _cmbTriggerMode.SelectedIndex == 0; };
             tab.Controls.Add(new Label { Text = "Visual Trigger:", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); tab.Controls.Add(_cmbTriggerMode); y += lh;
 
-            // ★小数点を持つパラメータの呼び出しで、step (0.5Mなど) を追加
             AddN("Trigger Thresh:", ref _nudTriggerThreshold, 0, 255, (decimal)_triggerThreshold, 1, 0.5M);
             AddN("Stability (ms):", ref _nudStabilityDuration, 0, 5000, _stabilityDurationMs);
             AddN("Reset Thresh:", ref _nudResetThreshold, 0, 255, (decimal)_resetThreshold, 1, 0.5M); y += 10;
@@ -270,7 +275,6 @@ namespace _20260224SolderInspec
         {
             int y = 10, lw = 160, cw = 100, lh = 28;
 
-            // ★修正：引数に「decimal step = 1M」を追加し、Increment（刻み幅）に設定！
             void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M)
             {
                 tab.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(lw, 20) });
@@ -290,12 +294,21 @@ namespace _20260224SolderInspec
                 tab.Controls.Add(nx); tab.Controls.Add(ny); tab.Controls.Add(nw); tab.Controls.Add(nh); y += lh;
             }
 
-            tab.Controls.Add(new Label { Text = "--- 傾き検出基準穴 設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
-            AddRect("基準穴 ROI:", ref _nudHolesX, ref _nudHolesY, ref _nudHolesW, ref _nudHolesH, _measurement.HolesRoi);
-            AddN("穴 最小面積:", ref _nudMinHoleArea, 0, 10000, _measurement.MinHoleArea);
-            AddN("穴 最大面積:", ref _nudMaxHoleArea, 0, 100000, _measurement.MaxHoleArea);
+            tab.Controls.Add(new Label { Text = "--- 傾斜検出 モード切替 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Magenta, Font = new Font(this.Font, FontStyle.Bold) }); y += 22;
 
-            // ★真円度を 0.05刻み で設定できるように変更
+            // ★ 外形エッジモードのチェックボックス追加
+            _chkTiltModeOuterEdge = new CheckBox { Text = "穴ではなく「外形エッジ（青枠）」で傾斜を計算する", Location = new Point(10, y), AutoSize = true, Checked = _measurement.UseOuterEdgeForTilt, ForeColor = Color.Magenta };
+            _chkTiltModeOuterEdge.CheckedChanged += (s, e) => UpdateSettingsFromUI();
+            tab.Controls.Add(_chkTiltModeOuterEdge); y += 28;
+
+            tab.Controls.Add(new Label { Text = "--- 【モードA】 外形エッジ ROI (シアン線) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Teal }); y += 22;
+            AddRect("左エッジROI(青):", ref _nudTiltLX, ref _nudTiltLY, ref _nudTiltLW, ref _nudTiltLH, _measurement.TiltLeftRoi);
+            AddRect("右エッジROI(青):", ref _nudTiltRX, ref _nudTiltRY, ref _nudTiltRW, ref _nudTiltRH, _measurement.TiltRightRoi); y += 10;
+
+            tab.Controls.Add(new Label { Text = "--- 【モードB】 傾き検出基準穴 設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
+            AddRect("基準穴 ROI:", ref _nudHolesX, ref _nudHolesY, ref _nudHolesW, ref _nudHolesH, _measurement.HolesRoi);
+            AddN("穴 最小面積:", ref _nudMinHoleArea, 0, 100000, _measurement.MinHoleArea);
+            AddN("穴 最大面積:", ref _nudMaxHoleArea, 0, 1000000, _measurement.MaxHoleArea);
             AddN("真円度しきい値:", ref _nudMinCircularity, 0, 1, (decimal)_measurement.MinCircularity, 2, 0.05M); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- エッジ間距離 測定設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
@@ -306,7 +319,6 @@ namespace _20260224SolderInspec
             AddRect("左エッジ ROI:", ref _nudJigLX, ref _nudJigLY, ref _nudJigLW, ref _nudJigLH, _measurement.JigLeftRoi);
             AddRect("右エッジ ROI:", ref _nudJigRX, ref _nudJigRY, ref _nudJigRW, ref _nudJigRH, _measurement.JigRightRoi);
 
-            // ★距離を 0.1mm 刻みに変更
             AddN("エッジ目標距離(mm):", ref _nudJigTarget, 0, 500, (decimal)_measurement.TargetJigDistanceMm, 2, 0.1M);
             AddN("エッジ許容誤差(mm):", ref _nudJigTolerance, 0, 50, (decimal)_measurement.JigToleranceMm, 2, 0.1M); y += 10;
 
@@ -314,24 +326,22 @@ namespace _20260224SolderInspec
             AddRect("Btm 線 ROI:", ref _nudBtmRoiX, ref _nudBtmRoiY, ref _nudBtmRoiW, ref _nudBtmRoiH, _measurement.BtmMeasureRoi); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- キャリブレーション (穴間基準) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkOrange }); y += 22;
-            _lblCurrentHoleDistPx = new Label { Text = "現在の穴間距離: 0.0 px", Location = new Point(10, y), Size = new Size(300, 20), ForeColor = Color.DarkOrange, Font = new Font(this.Font, FontStyle.Bold) };
+            _lblCurrentHoleDistPx = new Label { Text = "現在の穴/エッジ間距離: 0.0 px", Location = new Point(10, y), Size = new Size(300, 20), ForeColor = Color.DarkOrange, Font = new Font(this.Font, FontStyle.Bold) };
             tab.Controls.Add(_lblCurrentHoleDistPx); y += lh;
 
-            // ★手動コントロールも 0.1刻み に変更
             _nudActualWidthMm = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0.1M, Maximum = 500, Value = 50, DecimalPlaces = 2, Increment = 0.1M };
-            tab.Controls.Add(new Label { Text = "実測の穴間距離(mm):", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); tab.Controls.Add(_nudActualWidthMm); y += lh;
+            tab.Controls.Add(new Label { Text = "実測の距離(mm):", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); tab.Controls.Add(_nudActualWidthMm); y += lh;
 
             _btnCalcRatio = new Button { Text = "比率を自動計算", Location = new Point(10, y), Size = new Size(360, 30), BackColor = Color.LightYellow };
             _btnCalcRatio.Click += (s, e) => {
-                if (_measurement.LastHoleDistancePx <= 0) { MessageBox.Show("先にテスト実行して穴を検出させてください。"); return; }
+                if (_measurement.LastHoleDistancePx <= 0) { MessageBox.Show("先にテスト実行して検出させてください。"); return; }
                 _nudPixelToMm.Value = _nudActualWidthMm.Value / (decimal)_measurement.LastHoleDistancePx;
-                MessageBox.Show("更新しました。エッジ目標距離(mm)を再設定してください。");
+                MessageBox.Show("更新しました。エッジ目標距離(mm)やズレ許容値を再設定してください。");
             };
             tab.Controls.Add(_btnCalcRatio); y += 45;
 
             tab.Controls.Add(new Label { Text = "--- 検査パラメータ ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
 
-            // ★細かい単位のパラメーターに、適切な step を設定
             AddN("Pixel->mm比率:", ref _nudPixelToMm, 0.0001M, 1, (decimal)_measurement.PixelToMmRatio, 5, 0.001M);
             AddN("目標 Xずれ(mm):", ref _nudTargetXOffset, -100, 100, (decimal)_measurement.TargetXOffsetMm, 2, 0.1M);
             AddN("Xずれ許容(mm):", ref _nudOffsetTolerance, 0, 50, (decimal)_measurement.OffsetToleranceMm, 2, 0.1M);
@@ -739,7 +749,17 @@ namespace _20260224SolderInspec
                 {
                     Cv2.Rectangle(disp, _roi, Scalar.Yellow, 2);
                     Cv2.Rectangle(disp, _measurement.BtmMeasureRoi, new Scalar(0, 150, 150), 2);
-                    Cv2.Rectangle(disp, _measurement.HolesRoi, Scalar.Orange, 2);
+
+                    // モードに応じて枠の表示を切り替え
+                    if (_measurement.UseOuterEdgeForTilt)
+                    {
+                        Cv2.Rectangle(disp, _measurement.TiltLeftRoi, Scalar.Cyan, 2);
+                        Cv2.Rectangle(disp, _measurement.TiltRightRoi, Scalar.Cyan, 2);
+                    }
+                    else
+                    {
+                        Cv2.Rectangle(disp, _measurement.HolesRoi, Scalar.Orange, 2);
+                    }
 
                     if (_measurement.EnableJigCheck)
                     {
@@ -774,7 +794,7 @@ namespace _20260224SolderInspec
             }
 
             if (_lblCurrentHoleDistPx != null && !_lblCurrentHoleDistPx.IsDisposed && _measurement.LastHoleDistancePx > 0)
-                _lblCurrentHoleDistPx.Text = "現在の穴間距離: " + _measurement.LastHoleDistancePx.ToString("F1") + " px";
+                _lblCurrentHoleDistPx.Text = "現在の穴/エッジ間距離: " + _measurement.LastHoleDistancePx.ToString("F1") + " px";
 
             if (_lblStatus != null && !_lblStatus.IsDisposed)
             {
@@ -851,6 +871,7 @@ namespace _20260224SolderInspec
             if (_isLoadingConfig) return;
 
             if (_chkEnableJigCheck != null) _measurement.EnableJigCheck = _chkEnableJigCheck.Checked;
+            if (_chkTiltModeOuterEdge != null) _measurement.UseOuterEdgeForTilt = _chkTiltModeOuterEdge.Checked;
 
             _triggerThreshold = (double)_nudTriggerThreshold.Value; _stabilityDurationMs = (int)_nudStabilityDuration.Value; _resetThreshold = (double)_nudResetThreshold.Value;
 
@@ -864,6 +885,9 @@ namespace _20260224SolderInspec
             _saveRoi = new CvRect((int)_nudSaveRoiX.Value, (int)_nudSaveRoiY.Value, (int)_nudSaveRoiW.Value, (int)_nudSaveRoiH.Value);
 
             _logKeepDays = (int)_nudLogKeepDays.Value;
+
+            _measurement.TiltLeftRoi = new CvRect((int)_nudTiltLX.Value, (int)_nudTiltLY.Value, (int)_nudTiltLW.Value, (int)_nudTiltLH.Value);
+            _measurement.TiltRightRoi = new CvRect((int)_nudTiltRX.Value, (int)_nudTiltRY.Value, (int)_nudTiltRW.Value, (int)_nudTiltRH.Value);
 
             _measurement.BtmMeasureRoi = new CvRect((int)_nudBtmRoiX.Value, (int)_nudBtmRoiY.Value, (int)_nudBtmRoiW.Value, (int)_nudBtmRoiH.Value);
             _measurement.HolesRoi = new CvRect((int)_nudHolesX.Value, (int)_nudHolesY.Value, (int)_nudHolesW.Value, (int)_nudHolesH.Value);
@@ -901,6 +925,7 @@ namespace _20260224SolderInspec
                 double GetD(string k, double def) => d.TryGetValue(k, out var v) && double.TryParse(v, out double num) ? num : def;
 
                 _measurement.EnableJigCheck = d.TryGetValue("EnableJigCheck", out var ej) ? bool.Parse(ej) : true;
+                _measurement.UseOuterEdgeForTilt = d.TryGetValue("UseOuterEdgeForTilt", out var uoe) ? bool.Parse(uoe) : false;
 
                 _triggerOnBright = d.TryGetValue("TriggerOnBright", out var tb) ? bool.Parse(tb) : true;
                 _triggerThreshold = GetD("TriggerThreshold", _triggerThreshold); _stabilityDurationMs = GetI("StabilityDurationMs", _stabilityDurationMs);
@@ -916,6 +941,9 @@ namespace _20260224SolderInspec
                 _saveRoi = new CvRect(GetI("SaveRoiX", _saveRoi.X), GetI("SaveRoiY", _saveRoi.Y), GetI("SaveRoiW", _saveRoi.Width), GetI("SaveRoiH", _saveRoi.Height));
 
                 _logKeepDays = GetI("LogKeepDays", _logKeepDays);
+
+                _measurement.TiltLeftRoi = new CvRect(GetI("TiltLX", _measurement.TiltLeftRoi.X), GetI("TiltLY", _measurement.TiltLeftRoi.Y), GetI("TiltLW", _measurement.TiltLeftRoi.Width), GetI("TiltLH", _measurement.TiltLeftRoi.Height));
+                _measurement.TiltRightRoi = new CvRect(GetI("TiltRX", _measurement.TiltRightRoi.X), GetI("TiltRY", _measurement.TiltRightRoi.Y), GetI("TiltRW", _measurement.TiltRightRoi.Width), GetI("TiltRH", _measurement.TiltRightRoi.Height));
 
                 _measurement.HolesRoi = new CvRect(GetI("HolesX", _measurement.HolesRoi.X), GetI("HolesY", _measurement.HolesRoi.Y), GetI("HolesW", _measurement.HolesRoi.Width), GetI("HolesH", _measurement.HolesRoi.Height));
                 _measurement.MinHoleArea = GetI("MinHoleArea", _measurement.MinHoleArea); _measurement.MaxHoleArea = GetI("MaxHoleArea", _measurement.MaxHoleArea);
@@ -942,6 +970,8 @@ namespace _20260224SolderInspec
                 _measurement.TargetAngleDeg = GetD("TargetAngleDeg", _measurement.TargetAngleDeg); _measurement.AngleToleranceDeg = GetD("AngleToleranceDeg", _measurement.AngleToleranceDeg);
 
                 if (_chkEnableJigCheck != null) _chkEnableJigCheck.Checked = _measurement.EnableJigCheck;
+                if (_chkTiltModeOuterEdge != null) _chkTiltModeOuterEdge.Checked = _measurement.UseOuterEdgeForTilt;
+
                 _cmbTriggerMode.SelectedIndex = _triggerOnBright ? 0 : 1; _cmbSaveMode.SelectedIndex = _saveMode;
                 _nudTriggerThreshold.Value = (decimal)_triggerThreshold; _nudStabilityDuration.Value = _stabilityDurationMs;
 
@@ -956,6 +986,9 @@ namespace _20260224SolderInspec
                 _nudSaveRoiX.Value = _saveRoi.X; _nudSaveRoiY.Value = _saveRoi.Y; _nudSaveRoiW.Value = _saveRoi.Width; _nudSaveRoiH.Value = _saveRoi.Height;
 
                 _nudLogKeepDays.Value = _logKeepDays;
+
+                _nudTiltLX.Value = _measurement.TiltLeftRoi.X; _nudTiltLY.Value = _measurement.TiltLeftRoi.Y; _nudTiltLW.Value = _measurement.TiltLeftRoi.Width; _nudTiltLH.Value = _measurement.TiltLeftRoi.Height;
+                _nudTiltRX.Value = _measurement.TiltRightRoi.X; _nudTiltRY.Value = _measurement.TiltRightRoi.Y; _nudTiltRW.Value = _measurement.TiltRightRoi.Width; _nudTiltRH.Value = _measurement.TiltRightRoi.Height;
 
                 _nudHolesX.Value = _measurement.HolesRoi.X; _nudHolesY.Value = _measurement.HolesRoi.Y; _nudHolesW.Value = _measurement.HolesRoi.Width; _nudHolesH.Value = _measurement.HolesRoi.Height;
                 _nudMinHoleArea.Value = _measurement.MinHoleArea; _nudMaxHoleArea.Value = _measurement.MaxHoleArea;
@@ -990,6 +1023,7 @@ namespace _20260224SolderInspec
                 using (var sw = new StreamWriter(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt")))
                 {
                     sw.WriteLine("EnableJigCheck=" + _measurement.EnableJigCheck);
+                    sw.WriteLine("UseOuterEdgeForTilt=" + _measurement.UseOuterEdgeForTilt);
 
                     sw.WriteLine("TriggerOnBright=" + _triggerOnBright); sw.WriteLine("TriggerThreshold=" + _triggerThreshold);
                     sw.WriteLine("StabilityDurationMs=" + _stabilityDurationMs);
@@ -1005,6 +1039,9 @@ namespace _20260224SolderInspec
                     sw.WriteLine("SaveRoiX=" + _saveRoi.X); sw.WriteLine("SaveRoiY=" + _saveRoi.Y); sw.WriteLine("SaveRoiW=" + _saveRoi.Width); sw.WriteLine("SaveRoiH=" + _saveRoi.Height);
 
                     sw.WriteLine("LogKeepDays=" + _logKeepDays);
+
+                    sw.WriteLine("TiltLX=" + _measurement.TiltLeftRoi.X); sw.WriteLine("TiltLY=" + _measurement.TiltLeftRoi.Y); sw.WriteLine("TiltLW=" + _measurement.TiltLeftRoi.Width); sw.WriteLine("TiltLH=" + _measurement.TiltLeftRoi.Height);
+                    sw.WriteLine("TiltRX=" + _measurement.TiltRightRoi.X); sw.WriteLine("TiltRY=" + _measurement.TiltRightRoi.Y); sw.WriteLine("TiltRW=" + _measurement.TiltRightRoi.Width); sw.WriteLine("TiltRH=" + _measurement.TiltRightRoi.Height);
 
                     sw.WriteLine("HolesX=" + _measurement.HolesRoi.X); sw.WriteLine("HolesY=" + _measurement.HolesRoi.Y); sw.WriteLine("HolesW=" + _measurement.HolesRoi.Width); sw.WriteLine("HolesH=" + _measurement.HolesRoi.Height);
                     sw.WriteLine("MinHoleArea=" + _measurement.MinHoleArea); sw.WriteLine("MaxHoleArea=" + _measurement.MaxHoleArea);

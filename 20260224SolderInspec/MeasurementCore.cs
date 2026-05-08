@@ -13,6 +13,9 @@ namespace _20260224SolderInspec
     {
         public bool EnableJigCheck { get; set; } = true;
 
+        // ★追加：穴ではなく外形エッジで傾斜を計算するモード
+        public bool UseOuterEdgeForTilt { get; set; } = false;
+
         public double TargetXOffsetMm { get; set; } = 0.0;
         public double OffsetToleranceMm { get; set; } = 1.0;
         public double TargetAngleDeg { get; set; } = 0.0;
@@ -20,10 +23,14 @@ namespace _20260224SolderInspec
 
         public CvRect BtmMeasureRoi { get; set; } = new CvRect(250, 350, 150, 80);
         public CvRect HolesRoi { get; set; } = new CvRect(250, 350, 600, 200);
+
+        // ★追加：外形エッジ（青枠）用のROI
+        public CvRect TiltLeftRoi { get; set; } = new CvRect(100, 250, 80, 200);
+        public CvRect TiltRightRoi { get; set; } = new CvRect(900, 250, 80, 200);
+
         public int MinHoleArea { get; set; } = 300;
         public int MaxHoleArea { get; set; } = 3000;
 
-        // ★ 4分割用の境界線と閾値プロパティ
         public int SplitBoundaryX { get; set; } = 320;
         public int SplitBoundaryY { get; set; } = 570;
         public int ThreshTopLeft { get; set; } = 12;
@@ -52,6 +59,11 @@ namespace _20260224SolderInspec
         private CvPoint _btmCenter = new CvPoint(0, 0);
         private List<CvPoint> _detectedHoles = new List<CvPoint>();
 
+        // ★追加：外形エッジ描画用の変数
+        private CvPoint _tiltLeftPt1, _tiltLeftPt2;
+        private CvPoint _tiltRightPt1, _tiltRightPt2;
+        private bool _tiltEdgesFound = false;
+
         private CvPoint _btmAxisPt1, _btmAxisPt2;
         private CvPoint _projectedBtm;
 
@@ -73,7 +85,6 @@ namespace _20260224SolderInspec
             }
         }
 
-        // ★ 追加：1枚の画像を十字に4分割し、それぞれ異なる閾値で二値化して結合する最強メソッド
         private Mat CreateFourSplitBinary(Mat gray, bool invert)
         {
             Mat bin = new Mat(gray.Size(), MatType.CV_8UC1, new Scalar(0));
@@ -119,10 +130,8 @@ namespace _20260224SolderInspec
                 {
                     Cv2.GaussianBlur(gray, blurred, new CvSize(5, 5), 0);
 
-                    // デバッグ用にフルサイズで4分割二値化（穴が見やすいように反転）
                     using (Mat binFull = CreateFourSplitBinary(blurred, true))
                     {
-                        // 境界線を十字に描画
                         Cv2.Line(binFull, new CvPoint(0, SplitBoundaryY), new CvPoint(binFull.Width, SplitBoundaryY), Scalar.Gray, 2);
                         Cv2.Line(binFull, new CvPoint(SplitBoundaryX, 0), new CvPoint(SplitBoundaryX, binFull.Height), Scalar.Gray, 2);
 
@@ -150,7 +159,6 @@ namespace _20260224SolderInspec
             using (Mat roiMat = new Mat(frame, safeRoi)) { return Cv2.Mean(roiMat).Val0; }
         }
 
-        // ★ 変更：すでに二値化済みのフル画像を直接受け取り、そこからROIを切り出して判定する仕様に。高速化に貢献。
         private bool DetectJigEdge(Mat binFull, CvRect roi, bool isLeft, out int edgeX)
         {
             edgeX = 0;
@@ -174,6 +182,46 @@ namespace _20260224SolderInspec
             }
         }
 
+        // ★追加：外形エッジの全ピクセルから直線を近似するメソッド
+        private bool FindVerticalEdgeLine(Mat binFull, CvRect roi, bool isLeftEdge, out double x0, out double y0, out double vx, out double vy)
+        {
+            x0 = y0 = vx = vy = 0;
+            CvRect safeRoi = roi & new CvRect(0, 0, binFull.Width, binFull.Height);
+            if (safeRoi.Width <= 0 || safeRoi.Height <= 0) return false;
+
+            using (Mat roiMat = new Mat(binFull, safeRoi))
+            {
+                List<Point2f> edgePoints = new List<Point2f>();
+                for (int y = 0; y < roiMat.Rows; y++)
+                {
+                    if (isLeftEdge)
+                    {
+                        for (int x = 0; x < roiMat.Cols; x++)
+                        {
+                            if (roiMat.At<byte>(y, x) == 255) { edgePoints.Add(new Point2f(x + safeRoi.X, y + safeRoi.Y)); break; }
+                        }
+                    }
+                    else
+                    {
+                        for (int x = roiMat.Cols - 1; x >= 0; x--)
+                        {
+                            if (roiMat.At<byte>(y, x) == 255) { edgePoints.Add(new Point2f(x + safeRoi.X, y + safeRoi.Y)); break; }
+                        }
+                    }
+                }
+
+                if (edgePoints.Count >= 20) // ロバスト化：最低20点のピクセルが必要
+                {
+                    // L2（最小二乗法）で直線近似
+                    Line2D line = Cv2.FitLine(edgePoints, DistanceTypes.L2, 0, 0.01, 0.01);
+                    vx = line.Vx; vy = line.Vy; x0 = line.X1; y0 = line.Y1;
+                    if (vy < 0) { vx = -vx; vy = -vy; } // ベクトルを必ず下向きに統一
+                    return true;
+                }
+            }
+            return false;
+        }
+
         public int Inspect(Mat frame, CvRect debugRoi, bool isDebugMode)
         {
             _hasValidData = false;
@@ -188,12 +236,11 @@ namespace _20260224SolderInspec
                     {
                         Cv2.GaussianBlur(gray, blurred, new CvSize(5, 5), 0);
 
-                        // ★ 検査開始前に、4分割の完璧な白黒画像を「エッジ用(反転なし)」と「穴用(反転あり)」の2枚だけ作成
                         using (Mat binNormal = CreateFourSplitBinary(blurred, false))
                         using (Mat binInv = CreateFourSplitBinary(blurred, true))
                         {
                             // ==========================================
-                            // 1. 上部エッジ距離チェック
+                            // 1. 下部・上部エッジ距離チェック (Jig)
                             // ==========================================
                             _jigEdgeDetected = false;
                             IsJigOk = false;
@@ -212,55 +259,94 @@ namespace _20260224SolderInspec
                             }
 
                             // ==========================================
-                            // 2. 穴検出 (基準点3の導出)
+                            // 2. 製品上部の傾斜・中心座標の取得 (モード分岐)
                             // ==========================================
+                            double top_tilt_rad = 0;
+                            _tiltEdgesFound = false;
                             _detectedHoles.Clear();
-                            CvRect safeHolesRoi = HolesRoi & new CvRect(0, 0, binInv.Width, binInv.Height);
-                            if (safeHolesRoi.Width > 0 && safeHolesRoi.Height > 0)
+
+                            if (UseOuterEdgeForTilt)
                             {
-                                using (Mat holeBin = new Mat(binInv, safeHolesRoi))
+                                // ★ モードA：外形エッジの直線近似から計算
+                                bool lFound = FindVerticalEdgeLine(binNormal, TiltLeftRoi, true, out double lx0, out double ly0, out double lvx, out double lvy);
+                                bool rFound = FindVerticalEdgeLine(binNormal, TiltRightRoi, false, out double rx0, out double ry0, out double rvx, out double rvy);
+
+                                if (lFound && rFound)
                                 {
-                                    using (Mat kernel = Cv2.GetStructuringElement(MorphShapes.Ellipse, new CvSize(5, 5)))
+                                    _tiltEdgesFound = true;
+
+                                    // Y軸からの角度を計算
+                                    double lAngle = Math.Atan2(lvx, lvy);
+                                    double rAngle = Math.Atan2(rvx, rvy);
+
+                                    // 左右の角度を足して2で割る（ご提案通りの最強メソッド）
+                                    top_tilt_rad = (lAngle + rAngle) / 2.0;
+
+                                    // 描画用の線分を生成
+                                    _tiltLeftPt1 = new CvPoint((int)(lx0 - 500 * lvx), (int)(ly0 - 500 * lvy));
+                                    _tiltLeftPt2 = new CvPoint((int)(lx0 + 500 * lvx), (int)(ly0 + 500 * lvy));
+                                    _tiltRightPt1 = new CvPoint((int)(rx0 - 500 * rvx), (int)(ry0 - 500 * rvy));
+                                    _tiltRightPt2 = new CvPoint((int)(rx0 + 500 * rvx), (int)(ry0 + 500 * rvy));
+
+                                    // 中心点（_topCenter）の導出（ROIの真ん中のY座標における左右のXの平均値）
+                                    double refY = (TiltLeftRoi.Y + TiltLeftRoi.Height / 2.0 + TiltRightRoi.Y + TiltRightRoi.Height / 2.0) / 2.0;
+                                    double lX = lx0 + ((refY - ly0) / lvy) * lvx;
+                                    double rX = rx0 + ((refY - ry0) / rvy) * rvx;
+                                    _topCenter = new CvPoint((int)((lX + rX) / 2.0), (int)refY);
+
+                                    // ピクセル比率計算用に、外形間の距離を記録
+                                    LastHoleDistancePx = Math.Abs(rX - lX);
+                                }
+                            }
+                            else
+                            {
+                                // ★ モードB：従来の穴検出から計算
+                                CvRect safeHolesRoi = HolesRoi & new CvRect(0, 0, binInv.Width, binInv.Height);
+                                if (safeHolesRoi.Width > 0 && safeHolesRoi.Height > 0)
+                                {
+                                    using (Mat holeBin = new Mat(binInv, safeHolesRoi))
                                     {
-                                        Cv2.MorphologyEx(holeBin, holeBin, MorphTypes.Close, kernel);
-                                    }
-
-                                    Cv2.FindContours(holeBin, out CvPoint[][] hContours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
-
-                                    foreach (var c in hContours)
-                                    {
-                                        double area = Cv2.ContourArea(c);
-                                        if (area < MinHoleArea || area > MaxHoleArea) continue;
-
-                                        double perimeter = Cv2.ArcLength(c, true);
-                                        if (perimeter > 0)
+                                        using (Mat kernel = Cv2.GetStructuringElement(MorphShapes.Ellipse, new CvSize(5, 5)))
                                         {
-                                            double circularity = (4 * Math.PI * area) / (perimeter * perimeter);
-                                            if (circularity < MinCircularity) continue;
+                                            Cv2.MorphologyEx(holeBin, holeBin, MorphTypes.Close, kernel);
                                         }
 
-                                        var m = Cv2.Moments(c);
-                                        if (m.M00 > 0)
+                                        Cv2.FindContours(holeBin, out CvPoint[][] hContours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
+
+                                        foreach (var c in hContours)
                                         {
-                                            _detectedHoles.Add(new CvPoint((int)(m.M10 / m.M00) + safeHolesRoi.X, (int)(m.M01 / m.M00) + safeHolesRoi.Y));
+                                            double area = Cv2.ContourArea(c);
+                                            if (area < MinHoleArea || area > MaxHoleArea) continue;
+
+                                            double perimeter = Cv2.ArcLength(c, true);
+                                            if (perimeter > 0)
+                                            {
+                                                double circularity = (4 * Math.PI * area) / (perimeter * perimeter);
+                                                if (circularity < MinCircularity) continue;
+                                            }
+
+                                            var m = Cv2.Moments(c);
+                                            if (m.M00 > 0)
+                                            {
+                                                _detectedHoles.Add(new CvPoint((int)(m.M10 / m.M00) + safeHolesRoi.X, (int)(m.M01 / m.M00) + safeHolesRoi.Y));
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            double top_tilt_rad = 0;
-                            if (_detectedHoles.Count >= 2)
-                            {
-                                var sorted = _detectedHoles.OrderBy(p => p.X).ToList();
-                                var leftHole = sorted.First(); var rightHole = sorted.Last();
+                                if (_detectedHoles.Count >= 2)
+                                {
+                                    var sorted = _detectedHoles.OrderBy(p => p.X).ToList();
+                                    var leftHole = sorted.First(); var rightHole = sorted.Last();
 
-                                _topCenter = new CvPoint((leftHole.X + rightHole.X) / 2, (leftHole.Y + rightHole.Y) / 2);
-                                top_tilt_rad = Math.Atan2(rightHole.Y - leftHole.Y, rightHole.X - leftHole.X);
-                                LastHoleDistancePx = Math.Sqrt(Math.Pow(rightHole.X - leftHole.X, 2) + Math.Pow(rightHole.Y - leftHole.Y, 2));
+                                    _topCenter = new CvPoint((leftHole.X + rightHole.X) / 2, (leftHole.Y + rightHole.Y) / 2);
+                                    top_tilt_rad = Math.Atan2(rightHole.Y - leftHole.Y, rightHole.X - leftHole.X);
+                                    LastHoleDistancePx = Math.Sqrt(Math.Pow(rightHole.X - leftHole.X, 2) + Math.Pow(rightHole.Y - leftHole.Y, 2));
+                                }
                             }
 
                             // ==========================================
-                            // 3. 下部検出 (仮想中心軸の導出)
+                            // 3. 下部検出 (BTM仮想中心軸の導出)
                             // ==========================================
                             bool isBtmDetected = false;
                             double btm_tilt_rad = 0;
@@ -320,7 +406,10 @@ namespace _20260224SolderInspec
                             // ==========================================
                             // 4. 垂線投影・ズレ計算 ＆ 総合判定
                             // ==========================================
-                            if (_detectedHoles.Count >= 2 && isBtmDetected)
+                            // 穴モードまたは外形エッジモードのどちらかが成功していれば計算へ
+                            bool isTopDetected = UseOuterEdgeForTilt ? _tiltEdgesFound : (_detectedHoles.Count >= 2);
+
+                            if (isTopDetected && isBtmDetected)
                             {
                                 _lastAngle = (top_tilt_rad - btm_tilt_rad) * 180.0 / Math.PI;
 
@@ -339,10 +428,10 @@ namespace _20260224SolderInspec
                                 _isAngleOk = false;
                             }
 
-                            if (_detectedHoles.Count < 2) return 3;
-                            if (!isBtmDetected) return 3;
-
-                            if (EnableJigCheck && (!_jigEdgeDetected || !IsJigOk)) return 2;
+                            // 判定優先順位
+                            if (!isTopDetected) return 3; // 上部（穴またはエッジ）が見つからない
+                            if (!isBtmDetected) return 3; // 下部線が見つからない
+                            if (EnableJigCheck && (!_jigEdgeDetected || !IsJigOk)) return 2; // エッジチェックNG
 
                             _lastResult = (_isOffsetOk && _isAngleOk) ? 1 : 2;
                             return _lastResult;
@@ -357,15 +446,26 @@ namespace _20260224SolderInspec
         {
             if (!_hasValidData) return;
 
-            if (_detectedHoles.Count >= 2)
+            // モードに応じた上部の描画
+            if (UseOuterEdgeForTilt && _tiltEdgesFound)
             {
+                // 外形エッジの描画（シアン色の直線）
+                Cv2.Line(dispMat, _tiltLeftPt1, _tiltLeftPt2, Scalar.Cyan, 2, LineTypes.AntiAlias);
+                Cv2.Line(dispMat, _tiltRightPt1, _tiltRightPt2, Scalar.Cyan, 2, LineTypes.AntiAlias);
+                Cv2.DrawMarker(dispMat, _topCenter, Scalar.Red, MarkerTypes.Cross, 20, 2);
+            }
+            else if (!UseOuterEdgeForTilt && _detectedHoles.Count >= 2)
+            {
+                // 従来の穴描画
                 var sorted = _detectedHoles.OrderBy(p => p.X).ToList();
                 foreach (var h in _detectedHoles) Cv2.Circle(dispMat, h, 8, Scalar.Orange, 2, LineTypes.AntiAlias);
                 Cv2.Line(dispMat, sorted.First(), sorted.Last(), Scalar.Yellow, 2, LineTypes.AntiAlias);
                 Cv2.DrawMarker(dispMat, _topCenter, Scalar.Red, MarkerTypes.Cross, 20, 2);
             }
 
-            if (_detectedHoles.Count >= 2 && _btmCenter.X != 0 && _btmCenter.Y != 0)
+            // 下部軸と結果の描画
+            bool isTopDetected = UseOuterEdgeForTilt ? _tiltEdgesFound : (_detectedHoles.Count >= 2);
+            if (isTopDetected && _btmCenter.X != 0 && _btmCenter.Y != 0)
             {
                 Cv2.Line(dispMat, _btmAxisPt1, _btmAxisPt2, new Scalar(255, 255, 0), 2, LineTypes.AntiAlias);
                 Cv2.Line(dispMat, _topCenter, _projectedBtm, Scalar.Magenta, 2, LineTypes.AntiAlias);
@@ -380,6 +480,7 @@ namespace _20260224SolderInspec
                 Cv2.PutText(dispMat, angStr, new CvPoint(tx, ty + 20), HersheyFonts.HersheySimplex, 0.7, _isAngleOk ? Scalar.LimeGreen : Scalar.Red, 1);
             }
 
+            // エッジ間距離描画
             if (EnableJigCheck && _jigEdgeDetected)
             {
                 Scalar edgeCol = IsJigOk ? Scalar.LimeGreen : Scalar.Red;
