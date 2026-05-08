@@ -54,7 +54,6 @@ namespace _20260224SolderInspec
         private NumericUpDown _nudHolesX, _nudHolesY, _nudHolesW, _nudHolesH;
         private NumericUpDown _nudMinHoleArea, _nudMaxHoleArea, _nudMinCircularity;
 
-        // ★ 4分割のUI用変数
         private NumericUpDown _nudSplitX, _nudSplitY;
         private NumericUpDown _nudThreshTL, _nudThreshTR, _nudThreshBL, _nudThreshBR;
 
@@ -199,10 +198,12 @@ namespace _20260224SolderInspec
         private void InitializeSettingsTab(TabPage tab)
         {
             int y = 10, lw = 150, cw = 100, lh = 28;
-            void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0)
+
+            // ★修正：引数に「decimal step = 1M」を追加し、Increment（刻み幅）に設定！
+            void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M)
             {
                 tab.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-                n = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = min, Maximum = max, Value = val, DecimalPlaces = dp };
+                n = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = min, Maximum = max, Value = val, DecimalPlaces = dp, Increment = step };
                 n.ValueChanged += (s, e) => UpdateSettingsFromUI(); tab.Controls.Add(n); y += lh;
             }
 
@@ -239,9 +240,10 @@ namespace _20260224SolderInspec
             _cmbTriggerMode.SelectedIndexChanged += (s, e) => { if (!_isLoadingConfig) _triggerOnBright = _cmbTriggerMode.SelectedIndex == 0; };
             tab.Controls.Add(new Label { Text = "Visual Trigger:", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); tab.Controls.Add(_cmbTriggerMode); y += lh;
 
-            AddN("Trigger Thresh:", ref _nudTriggerThreshold, 0, 255, (decimal)_triggerThreshold, 1);
+            // ★小数点を持つパラメータの呼び出しで、step (0.5Mなど) を追加
+            AddN("Trigger Thresh:", ref _nudTriggerThreshold, 0, 255, (decimal)_triggerThreshold, 1, 0.5M);
             AddN("Stability (ms):", ref _nudStabilityDuration, 0, 5000, _stabilityDurationMs);
-            AddN("Reset Thresh:", ref _nudResetThreshold, 0, 255, (decimal)_resetThreshold, 1); y += 10;
+            AddN("Reset Thresh:", ref _nudResetThreshold, 0, 255, (decimal)_resetThreshold, 1, 0.5M); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- 輝度監視 ROI 設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
             AddN("ROI X:", ref _nudRoiX, 0, 3000, _roi.X); AddN("ROI Y:", ref _nudRoiY, 0, 3000, _roi.Y);
@@ -267,10 +269,12 @@ namespace _20260224SolderInspec
         private void InitializeInspectionTab(TabPage tab)
         {
             int y = 10, lw = 160, cw = 100, lh = 28;
-            void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0)
+
+            // ★修正：引数に「decimal step = 1M」を追加し、Increment（刻み幅）に設定！
+            void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M)
             {
                 tab.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-                n = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = min, Maximum = max, Value = val, DecimalPlaces = dp };
+                n = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = min, Maximum = max, Value = val, DecimalPlaces = dp, Increment = step };
                 n.ValueChanged += (s, e) => UpdateSettingsFromUI(); tab.Controls.Add(n); y += lh;
             }
             void AddRect(string txt, ref NumericUpDown nx, ref NumericUpDown ny, ref NumericUpDown nw, ref NumericUpDown nh, CvRect r)
@@ -290,7 +294,9 @@ namespace _20260224SolderInspec
             AddRect("基準穴 ROI:", ref _nudHolesX, ref _nudHolesY, ref _nudHolesW, ref _nudHolesH, _measurement.HolesRoi);
             AddN("穴 最小面積:", ref _nudMinHoleArea, 0, 10000, _measurement.MinHoleArea);
             AddN("穴 最大面積:", ref _nudMaxHoleArea, 0, 100000, _measurement.MaxHoleArea);
-            AddN("真円度しきい値:", ref _nudMinCircularity, 0, 1, (decimal)_measurement.MinCircularity, 2); y += 10;
+
+            // ★真円度を 0.05刻み で設定できるように変更
+            AddN("真円度しきい値:", ref _nudMinCircularity, 0, 1, (decimal)_measurement.MinCircularity, 2, 0.05M); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- エッジ間距離 測定設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
             _chkEnableJigCheck = new CheckBox { Text = "エッジ間距離測定を有効にする", Location = new Point(10, y), AutoSize = true, Checked = _measurement.EnableJigCheck };
@@ -300,8 +306,9 @@ namespace _20260224SolderInspec
             AddRect("左エッジ ROI:", ref _nudJigLX, ref _nudJigLY, ref _nudJigLW, ref _nudJigLH, _measurement.JigLeftRoi);
             AddRect("右エッジ ROI:", ref _nudJigRX, ref _nudJigRY, ref _nudJigRW, ref _nudJigRH, _measurement.JigRightRoi);
 
-            AddN("エッジ目標距離(mm):", ref _nudJigTarget, 0, 500, (decimal)_measurement.TargetJigDistanceMm, 2);
-            AddN("エッジ許容誤差(mm):", ref _nudJigTolerance, 0, 50, (decimal)_measurement.JigToleranceMm, 2); y += 10;
+            // ★距離を 0.1mm 刻みに変更
+            AddN("エッジ目標距離(mm):", ref _nudJigTarget, 0, 500, (decimal)_measurement.TargetJigDistanceMm, 2, 0.1M);
+            AddN("エッジ許容誤差(mm):", ref _nudJigTolerance, 0, 50, (decimal)_measurement.JigToleranceMm, 2, 0.1M); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- 下部測定 ROI ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkGoldenrod }); y += 22;
             AddRect("Btm 線 ROI:", ref _nudBtmRoiX, ref _nudBtmRoiY, ref _nudBtmRoiW, ref _nudBtmRoiH, _measurement.BtmMeasureRoi); y += 10;
@@ -309,7 +316,9 @@ namespace _20260224SolderInspec
             tab.Controls.Add(new Label { Text = "--- キャリブレーション (穴間基準) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkOrange }); y += 22;
             _lblCurrentHoleDistPx = new Label { Text = "現在の穴間距離: 0.0 px", Location = new Point(10, y), Size = new Size(300, 20), ForeColor = Color.DarkOrange, Font = new Font(this.Font, FontStyle.Bold) };
             tab.Controls.Add(_lblCurrentHoleDistPx); y += lh;
-            _nudActualWidthMm = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0.1M, Maximum = 500, Value = 50, DecimalPlaces = 2 };
+
+            // ★手動コントロールも 0.1刻み に変更
+            _nudActualWidthMm = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0.1M, Maximum = 500, Value = 50, DecimalPlaces = 2, Increment = 0.1M };
             tab.Controls.Add(new Label { Text = "実測の穴間距離(mm):", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); tab.Controls.Add(_nudActualWidthMm); y += lh;
 
             _btnCalcRatio = new Button { Text = "比率を自動計算", Location = new Point(10, y), Size = new Size(360, 30), BackColor = Color.LightYellow };
@@ -321,11 +330,13 @@ namespace _20260224SolderInspec
             tab.Controls.Add(_btnCalcRatio); y += 45;
 
             tab.Controls.Add(new Label { Text = "--- 検査パラメータ ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
-            AddN("Pixel->mm比率:", ref _nudPixelToMm, 0.0001M, 1, (decimal)_measurement.PixelToMmRatio, 5);
-            AddN("目標 Xずれ(mm):", ref _nudTargetXOffset, -100, 100, (decimal)_measurement.TargetXOffsetMm, 2);
-            AddN("Xずれ許容(mm):", ref _nudOffsetTolerance, 0, 50, (decimal)_measurement.OffsetToleranceMm, 2);
-            AddN("目標 Θ(deg):", ref _nudTargetAngle, -180, 180, (decimal)_measurement.TargetAngleDeg, 2);
-            AddN("Θ許容(deg):", ref _nudAngleTolerance, 0, 90, (decimal)_measurement.AngleToleranceDeg, 2);
+
+            // ★細かい単位のパラメーターに、適切な step を設定
+            AddN("Pixel->mm比率:", ref _nudPixelToMm, 0.0001M, 1, (decimal)_measurement.PixelToMmRatio, 5, 0.001M);
+            AddN("目標 Xずれ(mm):", ref _nudTargetXOffset, -100, 100, (decimal)_measurement.TargetXOffsetMm, 2, 0.1M);
+            AddN("Xずれ許容(mm):", ref _nudOffsetTolerance, 0, 50, (decimal)_measurement.OffsetToleranceMm, 2, 0.1M);
+            AddN("目標 Θ(deg):", ref _nudTargetAngle, -180, 180, (decimal)_measurement.TargetAngleDeg, 2, 0.1M);
+            AddN("Θ許容(deg):", ref _nudAngleTolerance, 0, 90, (decimal)_measurement.AngleToleranceDeg, 2, 0.1M);
         }
 
         private void InitializeDebugTab(TabPage tab)
@@ -336,35 +347,33 @@ namespace _20260224SolderInspec
 
             tab.Controls.Add(new Label { Text = "--- ★4分割 二値化 閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
 
-            // ★ 十字の境界線設定
             tab.Controls.Add(new Label { Text = "上下分割 Y境界線:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            _nudSplitY = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 3000, Value = _measurement.SplitBoundaryY };
+            _nudSplitY = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 3000, Value = _measurement.SplitBoundaryY, Increment = 1M };
             _nudSplitY.ValueChanged += (s, e) => UpdateSettingsFromUI();
             tab.Controls.Add(_nudSplitY); y += lh;
 
             tab.Controls.Add(new Label { Text = "左右分割 X境界線:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            _nudSplitX = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 3000, Value = _measurement.SplitBoundaryX };
+            _nudSplitX = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 3000, Value = _measurement.SplitBoundaryX, Increment = 1M };
             _nudSplitX.ValueChanged += (s, e) => UpdateSettingsFromUI();
             tab.Controls.Add(_nudSplitX); y += lh;
 
-            // ★ 4つのエリアの個別閾値
             tab.Controls.Add(new Label { Text = "左上 (TL) 閾値:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            _nudThreshTL = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshTopLeft };
+            _nudThreshTL = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshTopLeft, Increment = 1M };
             _nudThreshTL.ValueChanged += (s, e) => UpdateSettingsFromUI();
             tab.Controls.Add(_nudThreshTL); y += lh;
 
             tab.Controls.Add(new Label { Text = "右上 (TR) 閾値:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            _nudThreshTR = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshTopRight };
+            _nudThreshTR = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshTopRight, Increment = 1M };
             _nudThreshTR.ValueChanged += (s, e) => UpdateSettingsFromUI();
             tab.Controls.Add(_nudThreshTR); y += lh;
 
             tab.Controls.Add(new Label { Text = "左下 (BL) 閾値:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            _nudThreshBL = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshBtmLeft };
+            _nudThreshBL = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshBtmLeft, Increment = 1M };
             _nudThreshBL.ValueChanged += (s, e) => UpdateSettingsFromUI();
             tab.Controls.Add(_nudThreshBL); y += lh;
 
             tab.Controls.Add(new Label { Text = "右下 (BR) 閾値:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            _nudThreshBR = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshBtmRight };
+            _nudThreshBR = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 255, Value = _measurement.ThreshBtmRight, Increment = 1M };
             _nudThreshBR.ValueChanged += (s, e) => UpdateSettingsFromUI();
             tab.Controls.Add(_nudThreshBR); y += lh;
         }
@@ -740,7 +749,6 @@ namespace _20260224SolderInspec
 
                     Cv2.Rectangle(disp, _saveRoi, Scalar.LightSkyBlue, 1);
 
-                    // 十字線の描画
                     Cv2.Line(disp, new CvPoint(0, _measurement.SplitBoundaryY), new CvPoint(disp.Width, _measurement.SplitBoundaryY), Scalar.LightGray, 2);
                     Cv2.Line(disp, new CvPoint(_measurement.SplitBoundaryX, 0), new CvPoint(_measurement.SplitBoundaryX, disp.Height), Scalar.LightGray, 2);
 
@@ -862,7 +870,6 @@ namespace _20260224SolderInspec
             _measurement.MinHoleArea = (int)_nudMinHoleArea.Value; _measurement.MaxHoleArea = (int)_nudMaxHoleArea.Value;
             _measurement.MinCircularity = (double)_nudMinCircularity.Value;
 
-            // ★ 4分割UIの値を取得
             _measurement.SplitBoundaryX = (int)_nudSplitX.Value;
             _measurement.SplitBoundaryY = (int)_nudSplitY.Value;
             _measurement.ThreshTopLeft = (int)_nudThreshTL.Value;
@@ -914,7 +921,6 @@ namespace _20260224SolderInspec
                 _measurement.MinHoleArea = GetI("MinHoleArea", _measurement.MinHoleArea); _measurement.MaxHoleArea = GetI("MaxHoleArea", _measurement.MaxHoleArea);
                 _measurement.MinCircularity = GetD("MinCirc", _measurement.MinCircularity);
 
-                // ★ 4分割設定のロード（古い2分割の config だった場合は自動的に変換して引き継ぐ）
                 _measurement.SplitBoundaryX = GetI("SplitBoundaryX", 320);
                 _measurement.SplitBoundaryY = GetI("SplitBoundaryY", _measurement.SplitBoundaryY);
                 int oldEdge = GetI("EdgeThresh", 12);
@@ -935,7 +941,6 @@ namespace _20260224SolderInspec
                 _measurement.TargetXOffsetMm = GetD("TargetXOffsetMm", _measurement.TargetXOffsetMm); _measurement.OffsetToleranceMm = GetD("OffsetToleranceMm", _measurement.OffsetToleranceMm);
                 _measurement.TargetAngleDeg = GetD("TargetAngleDeg", _measurement.TargetAngleDeg); _measurement.AngleToleranceDeg = GetD("AngleToleranceDeg", _measurement.AngleToleranceDeg);
 
-                // UI反映
                 if (_chkEnableJigCheck != null) _chkEnableJigCheck.Checked = _measurement.EnableJigCheck;
                 _cmbTriggerMode.SelectedIndex = _triggerOnBright ? 0 : 1; _cmbSaveMode.SelectedIndex = _saveMode;
                 _nudTriggerThreshold.Value = (decimal)_triggerThreshold; _nudStabilityDuration.Value = _stabilityDurationMs;
@@ -956,7 +961,6 @@ namespace _20260224SolderInspec
                 _nudMinHoleArea.Value = _measurement.MinHoleArea; _nudMaxHoleArea.Value = _measurement.MaxHoleArea;
                 _nudMinCircularity.Value = (decimal)_measurement.MinCircularity;
 
-                // ★ 4分割のUI反映
                 _nudSplitX.Value = _measurement.SplitBoundaryX;
                 _nudSplitY.Value = _measurement.SplitBoundaryY;
                 _nudThreshTL.Value = _measurement.ThreshTopLeft;
@@ -1006,7 +1010,6 @@ namespace _20260224SolderInspec
                     sw.WriteLine("MinHoleArea=" + _measurement.MinHoleArea); sw.WriteLine("MaxHoleArea=" + _measurement.MaxHoleArea);
                     sw.WriteLine("MinCirc=" + _measurement.MinCircularity);
 
-                    // ★ 4分割設定のセーブ
                     sw.WriteLine("SplitBoundaryX=" + _measurement.SplitBoundaryX);
                     sw.WriteLine("SplitBoundaryY=" + _measurement.SplitBoundaryY);
                     sw.WriteLine("ThreshTL=" + _measurement.ThreshTopLeft);
