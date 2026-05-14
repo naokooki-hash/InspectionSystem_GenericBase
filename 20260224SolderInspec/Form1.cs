@@ -360,7 +360,37 @@ namespace _20260224SolderInspec
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e) { _isMonitoring = false; _isUiLoaded = false; _camera.StopCapture(); _camera.Dispose(); _plc.Disconnect(); SaveConfig(); }
 
-        private void AppendDailyLog(int result) { try { string dir = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd")); if (!Directory.Exists(dir)) Directory.CreateDirectory(dir); string logFile = Path.Combine(dir, "InspectionLog.csv"); bool isNewFile = !File.Exists(logFile); using (StreamWriter sw = new StreamWriter(logFile, true, System.Text.Encoding.UTF8)) { if (isNewFile) sw.WriteLine("時刻,判定,総検査数,良品数(OK),不良数(NG)"); string resStr = (result == 1) ? "OK" : "NG"; sw.WriteLine($"{DateTime.Now:HH:mm:ss},{resStr},{_totalCount},{_okCount},{_ngCount}"); } } catch { } }
+        // ★★★ ログ出力処理を修正：閾値情報を追加し、可読性を高めました ★★★
+        private void AppendDailyLog(int result)
+        {
+            try
+            {
+                string dir = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd"));
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                string logFile = Path.Combine(dir, "InspectionLog.csv");
+                bool isNewFile = !File.Exists(logFile);
+
+                using (StreamWriter sw = new StreamWriter(logFile, true, System.Text.Encoding.UTF8))
+                {
+                    if (isNewFile)
+                    {
+                        // ヘッダー行に閾値の項目を追加
+                        sw.WriteLine("時刻,判定,総検査数,良品数(OK),不良数(NG),外形閾値L(青),外形閾値R(青),内側閾値L(赤),内側閾値R(赤),穴閾値TL,穴閾値TR,穴閾値BL,穴閾値BR");
+                    }
+
+                    string resStr = (result == 1) ? "OK" : "NG";
+
+                    // データ行にその時点での各種閾値を出力
+                    sw.WriteLine($"{DateTime.Now:HH:mm:ss},{resStr},{_totalCount},{_okCount},{_ngCount}," +
+                                 $"{_measurement.ThreshOuterL},{_measurement.ThreshOuterR}," +
+                                 $"{_measurement.ThreshBtmInnerL},{_measurement.ThreshBtmInnerR}," +
+                                 $"{_measurement.ThreshTopLeft},{_measurement.ThreshTopRight}," +
+                                 $"{_measurement.ThreshBtmLeft},{_measurement.ThreshBtmRight}");
+                }
+            }
+            catch { }
+        }
 
         private void RestoreDailyCounter() { try { string logFile = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd"), "InspectionLog.csv"); if (File.Exists(logFile)) { var lines = File.ReadAllLines(logFile).Where(l => !string.IsNullOrWhiteSpace(l)).ToList(); if (lines.Count > 1) { var cols = lines.Last().Split(','); if (cols.Length >= 5) { int.TryParse(cols[2], out _totalCount); int.TryParse(cols[3], out _okCount); int.TryParse(cols[4], out _ngCount); } } } SafeInvoke(() => UpdateCounterDisplay()); } catch { } }
 
