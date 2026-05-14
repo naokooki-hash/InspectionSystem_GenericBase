@@ -36,7 +36,9 @@ namespace _20260224SolderInspec
 
         public CvRect BtmMeasureRoi { get; set; } = new CvRect(250, 350, 150, 80);
 
-        // ★追加：下部の内側線（赤枠）用のROI
+        // ★追加：BTM内側（赤枠）の専用閾値
+        public int ThreshBtmInnerL { get; set; } = 51;
+        public int ThreshBtmInnerR { get; set; } = 51;
         public CvRect BtmInnerLeftRoi { get; set; } = new CvRect(350, 420, 80, 120);
         public CvRect BtmInnerRightRoi { get; set; } = new CvRect(550, 420, 80, 120);
 
@@ -75,7 +77,6 @@ namespace _20260224SolderInspec
         private CvPoint _btmCenter = new CvPoint(0, 0);
         private CvPoint _btmAxisPt1, _btmAxisPt2;
 
-        // ★追加：内側BTM用の状態
         private bool _useInnerBtm = false;
         private bool _btmInnerEdgesFound = false;
         private CvPoint _btmInnerLeftPt1, _btmInnerLeftPt2, _btmInnerRightPt1, _btmInnerRightPt2;
@@ -147,6 +148,7 @@ namespace _20260224SolderInspec
                         Cv2.Line(binFull, new CvPoint(0, SplitBoundaryY), new CvPoint(binFull.Width, SplitBoundaryY), Scalar.Gray, 2);
                         Cv2.Line(binFull, new CvPoint(SplitBoundaryX, 0), new CvPoint(SplitBoundaryX, binFull.Height), Scalar.Gray, 2);
 
+                        // 上部外形エッジ(青枠)のデバッグ描画
                         CvRect safeLeft = TiltLeftRoi & new CvRect(0, 0, binFull.Width, binFull.Height);
                         if (safeLeft.Width > 0 && safeLeft.Height > 0)
                         {
@@ -163,6 +165,25 @@ namespace _20260224SolderInspec
                             using (Mat subBin = new Mat(binFull, safeRight))
                                 Cv2.Threshold(subGray, subBin, ThreshOuterR, 255, ThresholdTypes.Binary);
                             Cv2.Rectangle(binFull, safeRight, Scalar.Gray, 1);
+                        }
+
+                        // ★追加：下部内側エッジ(赤枠)のデバッグ描画
+                        CvRect safeInnerL = BtmInnerLeftRoi & new CvRect(0, 0, binFull.Width, binFull.Height);
+                        if (safeInnerL.Width > 0 && safeInnerL.Height > 0)
+                        {
+                            using (Mat subGray = new Mat(blurred, safeInnerL))
+                            using (Mat subBin = new Mat(binFull, safeInnerL))
+                                Cv2.Threshold(subGray, subBin, ThreshBtmInnerL, 255, ThresholdTypes.Binary);
+                            Cv2.Rectangle(binFull, safeInnerL, Scalar.Gray, 1);
+                        }
+
+                        CvRect safeInnerR = BtmInnerRightRoi & new CvRect(0, 0, binFull.Width, binFull.Height);
+                        if (safeInnerR.Width > 0 && safeInnerR.Height > 0)
+                        {
+                            using (Mat subGray = new Mat(blurred, safeInnerR))
+                            using (Mat subBin = new Mat(binFull, safeInnerR))
+                                Cv2.Threshold(subGray, subBin, ThreshBtmInnerR, 255, ThresholdTypes.Binary);
+                            Cv2.Rectangle(binFull, safeInnerR, Scalar.Gray, 1);
                         }
 
                         CvRect safeDebugRoi = debugRoi & new CvRect(0, 0, binFull.Width, binFull.Height);
@@ -375,14 +396,13 @@ namespace _20260224SolderInspec
                                 }
                             }
 
-                            // 3B. 追加：内側の線（赤色枠）
+                            // 3B. 追加：内側の線（赤色枠）専用閾値を使用
                             bool isBtmInnerDetected = false; double btm_tilt_rad_inner = 0;
                             CvPoint btmInnerCenter = new CvPoint(0, 0);
                             _btmInnerEdgesFound = false;
 
-                            // 内側のエッジ（金属と穴の境界）を探すため、走査方向を逆に設定して金属エッジを拾う
-                            bool lInnerFound = FindVerticalEdgeLine(gray, BtmInnerLeftRoi, false, ThreshBtmLeft, out double ilx0, out double ily0, out double ilvx, out double ilvy);
-                            bool rInnerFound = FindVerticalEdgeLine(gray, BtmInnerRightRoi, true, ThreshBtmRight, out double irx0, out double iry0, out double irvx, out double irvy);
+                            bool lInnerFound = FindVerticalEdgeLine(gray, BtmInnerLeftRoi, false, ThreshBtmInnerL, out double ilx0, out double ily0, out double ilvx, out double ilvy);
+                            bool rInnerFound = FindVerticalEdgeLine(gray, BtmInnerRightRoi, true, ThreshBtmInnerR, out double irx0, out double iry0, out double irvx, out double irvy);
 
                             if (lInnerFound && rInnerFound)
                             {
@@ -410,7 +430,6 @@ namespace _20260224SolderInspec
 
                             if (isBtmOuterDetected && isBtmInnerDetected)
                             {
-                                // 両方見つかった場合は、角度が0（垂直）に近い方を信用する
                                 if (Math.Abs(btm_tilt_rad_inner) < Math.Abs(btm_tilt_rad_outer))
                                 {
                                     _useInnerBtm = true;
@@ -435,7 +454,6 @@ namespace _20260224SolderInspec
                                     btm_tilt_rad = btm_tilt_rad_outer;
                                 }
 
-                                // 表示用に最終採用された中心軸を生成
                                 double final_vx = Math.Sin(btm_tilt_rad);
                                 double final_vy = Math.Cos(btm_tilt_rad);
                                 _btmAxisPt1 = new CvPoint((int)(_btmCenter.X - 500 * final_vx), (int)(_btmCenter.Y - 500 * final_vy));
@@ -475,7 +493,6 @@ namespace _20260224SolderInspec
                                 if (_isHoleOffsetOk && _isHoleAngleOk) isHoleOk = true;
                             }
 
-                            // いずれの条件も計算できなかった場合は測定不能
                             if (!isBtmDetected) return 3;
                             if (EnableOuterTiltCheck && !_tiltEdgesFound && !EnableHoleCheck) return 3;
                             if (EnableHoleCheck && _detectedHoles.Count < 2 && !EnableOuterTiltCheck) return 3;
@@ -483,11 +500,10 @@ namespace _20260224SolderInspec
 
                             if (!isJigOkFlag) return 2;
 
-                            // ★最終判定：2と3の検査で「どちらかが良品」ならOK（払い出し）とする
                             bool finalOk = false;
                             if (EnableOuterTiltCheck && EnableHoleCheck)
                             {
-                                finalOk = isOuterOk || isHoleOk; // OR判定！
+                                finalOk = isOuterOk || isHoleOk;
                             }
                             else if (EnableOuterTiltCheck)
                             {
@@ -499,7 +515,7 @@ namespace _20260224SolderInspec
                             }
                             else
                             {
-                                finalOk = true; // 上部検査が両方OFFならBTMとJIGのみでOK
+                                finalOk = true;
                             }
 
                             _lastResult = finalOk ? 1 : 2;
@@ -515,14 +531,12 @@ namespace _20260224SolderInspec
         {
             if (!_hasValidData) return;
 
-            // 内側BTMの描画（常に赤線で表示）
             if (_btmInnerEdgesFound)
             {
                 Cv2.Line(dispMat, _btmInnerLeftPt1, _btmInnerLeftPt2, Scalar.Red, 2, LineTypes.AntiAlias);
                 Cv2.Line(dispMat, _btmInnerRightPt1, _btmInnerRightPt2, Scalar.Red, 2, LineTypes.AntiAlias);
             }
 
-            // 採用されたBTM軸の描画
             if (_btmCenter.X != 0)
             {
                 Scalar axisCol = _useInnerBtm ? Scalar.Pink : new Scalar(0, 255, 255);
@@ -534,7 +548,6 @@ namespace _20260224SolderInspec
                 Cv2.PutText(dispMat, usedStr, new CvPoint(_btmCenter.X + 20, _btmCenter.Y + 20), HersheyFonts.HersheySimplex, 0.7, axisCol, 1);
             }
 
-            // モードA: 外形の描画
             if (EnableOuterTiltCheck && _tiltEdgesFound && _btmCenter.X != 0)
             {
                 Cv2.Line(dispMat, _tiltLeftPt1, _tiltLeftPt2, Scalar.Cyan, 2, LineTypes.AntiAlias);
@@ -551,7 +564,6 @@ namespace _20260224SolderInspec
                 Cv2.PutText(dispMat, angStr, new CvPoint(tx, ty + 15), HersheyFonts.HersheySimplex, 0.7, _isOuterAngleOk ? Scalar.LimeGreen : Scalar.Red, 1);
             }
 
-            // モードB: 穴の描画
             if (EnableHoleCheck && _detectedHoles.Count >= 2 && _btmCenter.X != 0)
             {
                 var sorted = _detectedHoles.OrderBy(p => p.X).ToList();
@@ -569,7 +581,6 @@ namespace _20260224SolderInspec
                 Cv2.PutText(dispMat, angStr, new CvPoint(tx, ty + 15), HersheyFonts.HersheySimplex, 0.7, _isHoleAngleOk ? Scalar.LimeGreen : Scalar.Red, 1);
             }
 
-            // エッジの描画
             if (EnableJigCheck && _jigEdgeDetected)
             {
                 Scalar edgeCol = IsJigOk ? Scalar.LimeGreen : Scalar.Red;
