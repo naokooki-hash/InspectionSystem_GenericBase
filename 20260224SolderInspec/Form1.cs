@@ -64,7 +64,6 @@ namespace _20260224SolderInspec
         private NumericUpDown _nudTiltRX, _nudTiltRY, _nudTiltRW, _nudTiltRH;
 
         private NumericUpDown _nudThreshOuterL, _nudThreshOuterR;
-        // ★追加：BTM内側の閾値調整用
         private NumericUpDown _nudThreshBtmInnerL, _nudThreshBtmInnerR;
 
         private NumericUpDown _nudSplitX, _nudSplitY;
@@ -335,7 +334,6 @@ namespace _20260224SolderInspec
             AddN("左エッジ(青) 閾値:", ref _nudThreshOuterL, 0, 255, _measurement.ThreshOuterL, 0, 1M);
             AddN("右エッジ(青) 閾値:", ref _nudThreshOuterR, 0, 255, _measurement.ThreshOuterR, 0, 1M); y += 10;
 
-            // ★追加：BTM内側の独立閾値
             tab.Controls.Add(new Label { Text = "--- ★BTM内側(赤枠) 専用閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkRed }); y += 22;
             AddN("左内側(赤) 閾値:", ref _nudThreshBtmInnerL, 0, 255, _measurement.ThreshBtmInnerL, 0, 1M);
             AddN("右内側(赤) 閾値:", ref _nudThreshBtmInnerR, 0, 255, _measurement.ThreshBtmInnerR, 0, 1M); y += 10;
@@ -360,8 +358,8 @@ namespace _20260224SolderInspec
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e) { _isMonitoring = false; _isUiLoaded = false; _camera.StopCapture(); _camera.Dispose(); _plc.Disconnect(); SaveConfig(); }
 
-        // ★★★ ログ出力処理を修正：閾値情報を追加し、可読性を高めました ★★★
-        private void AppendDailyLog(int result)
+        // ★修正点1：実測の輝度(brightness)を受け取れるように引数を追加
+        private void AppendDailyLog(int result, double brightness)
         {
             try
             {
@@ -375,18 +373,14 @@ namespace _20260224SolderInspec
                 {
                     if (isNewFile)
                     {
-                        // ヘッダー行に閾値の項目を追加
-                        sw.WriteLine("時刻,判定,総検査数,良品数(OK),不良数(NG),外形閾値L(青),外形閾値R(青),内側閾値L(赤),内側閾値R(赤),穴閾値TL,穴閾値TR,穴閾値BL,穴閾値BR");
+                        // ★修正点2：設定値ではなく「トリガー時輝度(実測値)」を記録するヘッダーに変更
+                        sw.WriteLine("時刻,判定,総検査数,良品数(OK),不良数(NG),トリガー時輝度(実測値)");
                     }
 
                     string resStr = (result == 1) ? "OK" : "NG";
 
-                    // データ行にその時点での各種閾値を出力
-                    sw.WriteLine($"{DateTime.Now:HH:mm:ss},{resStr},{_totalCount},{_okCount},{_ngCount}," +
-                                 $"{_measurement.ThreshOuterL},{_measurement.ThreshOuterR}," +
-                                 $"{_measurement.ThreshBtmInnerL},{_measurement.ThreshBtmInnerR}," +
-                                 $"{_measurement.ThreshTopLeft},{_measurement.ThreshTopRight}," +
-                                 $"{_measurement.ThreshBtmLeft},{_measurement.ThreshBtmRight}");
+                    // ★修正点3：取得した実測輝度(brightness)を小数点以下2桁で書き出し
+                    sw.WriteLine($"{DateTime.Now:HH:mm:ss},{resStr},{_totalCount},{_okCount},{_ngCount},{brightness:F2}");
                 }
             }
             catch { }
@@ -419,7 +413,9 @@ namespace _20260224SolderInspec
                 try
                 {
                     _procFrameCount++; bool isDebug = _isDebugTabActive; double b = 0;
-                    if (_appSettings.TriggerMode == "Visual" || _isRunning || _autoStartCount > 0) b = _measurement.CalculateBrightness(frame, _roi);
+                    if (_appSettings.TriggerMode == "Visual" || _isRunning || _autoStartCount > 0)
+                        b = _measurement.CalculateBrightness(frame, _roi); // ★ここで毎フレーム輝度を実測している
+
                     if (isDebug) _measurement.UpdateDebugImageRealtime(frame, _saveRoi);
                     bool forceUiUpdate = false;
 
@@ -486,7 +482,8 @@ namespace _20260224SolderInspec
                                 SafeInvoke(() => lblStateUpdate("FALLBACK HOLE...", Color.Orange));
                             }
 
-                            if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(inspectResult); _currentState = STATE_COOLING; _cooldownStartTime = DateTime.Now; }
+                            // ★修正点4：実測輝度(b)を引数として引き渡す
+                            if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(inspectResult, b); _currentState = STATE_COOLING; _cooldownStartTime = DateTime.Now; }
                             else { _currentRetry++; _stabilityStartTime = DateTime.Now; SafeInvoke(() => lblStateUpdate($"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange)); }
                         }
                     }
@@ -507,7 +504,8 @@ namespace _20260224SolderInspec
                                     SafeInvoke(() => lblStateUpdate("FALLBACK HOLE...", Color.Orange));
                                 }
 
-                                if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(inspectResult); _currentState = STATE_COOLING; _cooldownStartTime = DateTime.Now; }
+                                // ★修正点5：実測輝度(b)を引数として引き渡す
+                                if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(inspectResult, b); _currentState = STATE_COOLING; _cooldownStartTime = DateTime.Now; }
                                 else { _currentRetry++; _stabilityStartTime = DateTime.Now; SafeInvoke(() => lblStateUpdate($"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange)); }
                             }
                         }
@@ -523,7 +521,14 @@ namespace _20260224SolderInspec
 
         private void lblStateUpdate(string text, Color color) { if (_lblBigResult != null && !_lblBigResult.IsDisposed) { _lblBigResult.Text = text; _lblBigResult.BackColor = color; } }
 
-        private void ProcessInspectionResult(int inspectResult) { _plc.SendResult(inspectResult == 1); if (_appSettings.TriggerMode == "Plc") Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0)); SafeInvoke(() => UpdateResultDisplay(inspectResult, false)); _pendingSaveResult = inspectResult; }
+        // ★修正点6：シグネチャに brightness を追加
+        private void ProcessInspectionResult(int inspectResult, double brightness)
+        {
+            _plc.SendResult(inspectResult == 1);
+            if (_appSettings.TriggerMode == "Plc") Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+            SafeInvoke(() => UpdateResultDisplay(inspectResult, false, brightness));
+            _pendingSaveResult = inspectResult;
+        }
 
         private void UpdateUIDisplay(Mat frame, double b, bool isDebug)
         {
@@ -563,7 +568,20 @@ namespace _20260224SolderInspec
             try { Mat imgToSave = img.Clone(); Task.Run(() => { try { string dir = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd")); if (!Directory.Exists(dir)) Directory.CreateDirectory(dir); string resStr = (res == 1) ? "OK" : "NG"; string fileName = string.Format("{0:HHmmss_fff}_{1}.jpg", DateTime.Now, resStr); string path = Path.Combine(dir, fileName); CvRect crop = _saveRoi & new CvRect(0, 0, imgToSave.Width, imgToSave.Height); using (Mat cropped = new Mat(imgToSave, crop)) using (Mat resized = new Mat()) { Cv2.Resize(cropped, resized, new CvSize(cropped.Width / 2, cropped.Height / 2)); var p = new ImageEncodingParam(ImwriteFlags.JpegQuality, 65); Cv2.ImWrite(path, resized, p); } } catch { } finally { if (imgToSave != null && !imgToSave.IsDisposed) imgToSave.Dispose(); } }); } catch { }
         }
 
-        private void UpdateResultDisplay(int res, bool manual) { if (_lblBigResult == null || _lblBigResult.IsDisposed) return; _lblBigResult.Text = res == 1 ? "OK" : "NG"; _lblBigResult.BackColor = res == 1 ? Color.LimeGreen : Color.Red; if (!manual) { _totalCount++; if (res == 1) _okCount++; else _ngCount++; UpdateCounterDisplay(); AppendDailyLog(res); } }
+        // ★修正点7：シグネチャに brightness を追加し、AppendDailyLog に渡す
+        private void UpdateResultDisplay(int res, bool manual, double brightness = 0.0)
+        {
+            if (_lblBigResult == null || _lblBigResult.IsDisposed) return;
+            _lblBigResult.Text = res == 1 ? "OK" : "NG";
+            _lblBigResult.BackColor = res == 1 ? Color.LimeGreen : Color.Red;
+            if (!manual)
+            {
+                _totalCount++;
+                if (res == 1) _okCount++; else _ngCount++;
+                UpdateCounterDisplay();
+                AppendDailyLog(res, brightness);
+            }
+        }
 
         private void UpdateCounterDisplay() { if (_lblTotal == null || _lblTotal.IsDisposed) return; _lblTotal.Text = "総検査数 : " + _totalCount; _lblOk.Text = "良品 (OK): " + _okCount; _lblNg.Text = "不良 (NG): " + _ngCount; }
 
@@ -584,7 +602,6 @@ namespace _20260224SolderInspec
             _measurement.TiltRightRoi = new CvRect((int)_nudTiltRX.Value, (int)_nudTiltRY.Value, (int)_nudTiltRW.Value, (int)_nudTiltRH.Value);
             _measurement.ThreshOuterL = (int)_nudThreshOuterL.Value; _measurement.ThreshOuterR = (int)_nudThreshOuterR.Value;
 
-            // ★BTM内側閾値のUI更新
             _measurement.ThreshBtmInnerL = (int)_nudThreshBtmInnerL.Value; _measurement.ThreshBtmInnerR = (int)_nudThreshBtmInnerR.Value;
 
             _measurement.TargetOuterXOffsetMm = (double)_nudOuterTargetX.Value; _measurement.OuterOffsetToleranceMm = (double)_nudOuterOffsetX.Value;
@@ -642,7 +659,6 @@ namespace _20260224SolderInspec
                 _measurement.TiltRightRoi = new CvRect(GetI("TiltRX", _measurement.TiltRightRoi.X), GetI("TiltRY", _measurement.TiltRightRoi.Y), GetI("TiltRW", _measurement.TiltRightRoi.Width), GetI("TiltRH", _measurement.TiltRightRoi.Height));
                 _measurement.ThreshOuterL = GetI("ThreshOuterL", 100); _measurement.ThreshOuterR = GetI("ThreshOuterR", 100);
 
-                // ★追加：BTM内側閾値のロード
                 _measurement.ThreshBtmInnerL = GetI("ThreshBtmInnerL", 51); _measurement.ThreshBtmInnerR = GetI("ThreshBtmInnerR", 51);
 
                 _measurement.TargetOuterXOffsetMm = GetD("TargetOuterXOffsetMm", _measurement.TargetOuterXOffsetMm);
@@ -670,7 +686,6 @@ namespace _20260224SolderInspec
                 _measurement.TargetXOffsetMm = GetD("TargetXOffsetMm", _measurement.TargetXOffsetMm); _measurement.OffsetToleranceMm = GetD("OffsetToleranceMm", _measurement.OffsetToleranceMm);
                 _measurement.TargetAngleDeg = GetD("TargetAngleDeg", _measurement.TargetAngleDeg); _measurement.AngleToleranceDeg = GetD("AngleToleranceDeg", _measurement.AngleToleranceDeg);
 
-                // UIへ反映
                 if (_chkEnableJigCheck != null) _chkEnableJigCheck.Checked = _measurement.EnableJigCheck;
                 if (_chkEnableOuterTiltCheck != null) _chkEnableOuterTiltCheck.Checked = _measurement.EnableOuterTiltCheck;
                 if (_chkEnableHoleCheck != null) _chkEnableHoleCheck.Checked = _measurement.EnableHoleCheck;
@@ -687,7 +702,6 @@ namespace _20260224SolderInspec
                 _nudTiltRX.Value = _measurement.TiltRightRoi.X; _nudTiltRY.Value = _measurement.TiltRightRoi.Y; _nudTiltRW.Value = _measurement.TiltRightRoi.Width; _nudTiltRH.Value = _measurement.TiltRightRoi.Height;
                 _nudThreshOuterL.Value = _measurement.ThreshOuterL; _nudThreshOuterR.Value = _measurement.ThreshOuterR;
 
-                // ★追加：BTM内側閾値のUI反映
                 _nudThreshBtmInnerL.Value = _measurement.ThreshBtmInnerL; _nudThreshBtmInnerR.Value = _measurement.ThreshBtmInnerR;
 
                 _nudOuterTargetX.Value = (decimal)_measurement.TargetOuterXOffsetMm; _nudOuterOffsetX.Value = (decimal)_measurement.OuterOffsetToleranceMm;
@@ -737,7 +751,6 @@ namespace _20260224SolderInspec
                     sw.WriteLine("TiltRX=" + _measurement.TiltRightRoi.X); sw.WriteLine("TiltRY=" + _measurement.TiltRightRoi.Y); sw.WriteLine("TiltRW=" + _measurement.TiltRightRoi.Width); sw.WriteLine("TiltRH=" + _measurement.TiltRightRoi.Height);
                     sw.WriteLine("ThreshOuterL=" + _measurement.ThreshOuterL); sw.WriteLine("ThreshOuterR=" + _measurement.ThreshOuterR);
 
-                    // ★追加：BTM内側閾値の保存
                     sw.WriteLine("ThreshBtmInnerL=" + _measurement.ThreshBtmInnerL); sw.WriteLine("ThreshBtmInnerR=" + _measurement.ThreshBtmInnerR);
 
                     sw.WriteLine("TargetOuterXOffsetMm=" + _measurement.TargetOuterXOffsetMm); sw.WriteLine("OuterOffsetToleranceMm=" + _measurement.OuterOffsetToleranceMm);
