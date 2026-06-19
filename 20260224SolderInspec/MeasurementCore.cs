@@ -64,6 +64,10 @@ namespace _20260224SolderInspec
         public bool IsJigOk { get; private set; } = false;
         public double LastJigDistanceMm { get; private set; } = 0.0;
 
+        // ★追加：外部から実測角度を読み取るためのプロパティ
+        public double LastOuterAngleDeg { get; private set; } = 0.0;
+        public double LastHoleAngleDeg { get; private set; } = 0.0;
+
         private int _jigLeftEdgeX = 0, _jigRightEdgeX = 0;
         private bool _jigEdgeDetected = false;
 
@@ -86,8 +90,8 @@ namespace _20260224SolderInspec
         private readonly object _imageLock = new object();
         private Mat _lastBinaryHole = new Mat();
 
-        private double _lastHoleOffsetMm, _lastHoleAngle;
-        private double _lastOuterOffsetMm, _lastOuterAngle;
+        private double _lastHoleOffsetMm;
+        private double _lastOuterOffsetMm;
         private bool _isHoleOffsetOk = false, _isHoleAngleOk = false;
         private bool _isOuterOffsetOk = false, _isOuterAngleOk = false;
         private bool _hasValidData = false;
@@ -360,13 +364,10 @@ namespace _20260224SolderInspec
                                 }
                             }
 
-                            // ==========================================
-                            // 3. 下部(BTM)基準線の検出（外形と内側の2パターンで勝負）
-                            // ==========================================
+                            // 3. 下部(BTM)基準線の検出
                             bool isBtmOuterDetected = false; double btm_tilt_rad_outer = 0;
                             CvPoint btmOuterCenter = new CvPoint(0, 0);
 
-                            // 3A. 従来の外形線（黄色枠）
                             CvRect safeBtmRoi = BtmMeasureRoi & new CvRect(0, 0, binNormal.Width, binNormal.Height);
                             if (safeBtmRoi.Width > 0 && safeBtmRoi.Height > 0)
                             {
@@ -396,7 +397,6 @@ namespace _20260224SolderInspec
                                 }
                             }
 
-                            // 3B. 追加：内側の線（赤色枠）専用閾値を使用
                             bool isBtmInnerDetected = false; double btm_tilt_rad_inner = 0;
                             CvPoint btmInnerCenter = new CvPoint(0, 0);
                             _btmInnerEdgesFound = false;
@@ -423,36 +423,21 @@ namespace _20260224SolderInspec
                                 isBtmInnerDetected = true;
                             }
 
-                            // 3C. 比較して角度（誤差）が少ない方を最終的なBTMとして採用する
                             _useInnerBtm = false;
                             bool isBtmDetected = false;
                             double btm_tilt_rad = 0;
 
                             if (isBtmOuterDetected && isBtmInnerDetected)
                             {
-                                if (Math.Abs(btm_tilt_rad_inner) < Math.Abs(btm_tilt_rad_outer))
-                                {
-                                    _useInnerBtm = true;
-                                }
+                                if (Math.Abs(btm_tilt_rad_inner) < Math.Abs(btm_tilt_rad_outer)) _useInnerBtm = true;
                             }
-                            else if (isBtmInnerDetected)
-                            {
-                                _useInnerBtm = true;
-                            }
+                            else if (isBtmInnerDetected) { _useInnerBtm = true; }
 
                             if (isBtmOuterDetected || isBtmInnerDetected)
                             {
                                 isBtmDetected = true;
-                                if (_useInnerBtm)
-                                {
-                                    _btmCenter = btmInnerCenter;
-                                    btm_tilt_rad = btm_tilt_rad_inner;
-                                }
-                                else
-                                {
-                                    _btmCenter = btmOuterCenter;
-                                    btm_tilt_rad = btm_tilt_rad_outer;
-                                }
+                                if (_useInnerBtm) { _btmCenter = btmInnerCenter; btm_tilt_rad = btm_tilt_rad_inner; }
+                                else { _btmCenter = btmOuterCenter; btm_tilt_rad = btm_tilt_rad_outer; }
 
                                 double final_vx = Math.Sin(btm_tilt_rad);
                                 double final_vy = Math.Cos(btm_tilt_rad);
@@ -462,34 +447,32 @@ namespace _20260224SolderInspec
 
                             _hasValidData = true;
 
-                            // ==========================================
-                            // 4. 並列計算と総合判定（ORロジック）
-                            // ==========================================
+                            // 4. 並列計算と総合判定
                             bool isHoleOk = false, isOuterOk = false, isJigOkFlag = true;
 
                             if (EnableJigCheck) { if (!_jigEdgeDetected || !IsJigOk) isJigOkFlag = false; }
 
                             if (EnableOuterTiltCheck && _tiltEdgesFound && isBtmDetected)
                             {
-                                _lastOuterAngle = (outer_tilt_rad - btm_tilt_rad) * 180.0 / Math.PI;
+                                LastOuterAngleDeg = (outer_tilt_rad - btm_tilt_rad) * 180.0 / Math.PI;
                                 double expected_btm_X = _outerTopCenter.X - (_btmCenter.Y - _outerTopCenter.Y) * Math.Tan(outer_tilt_rad);
                                 _projectedBtmOuter = new CvPoint((int)expected_btm_X, _btmCenter.Y);
                                 _lastOuterOffsetMm = (_btmCenter.X - expected_btm_X) * PixelToMmRatio;
 
                                 _isOuterOffsetOk = Math.Abs(_lastOuterOffsetMm - TargetOuterXOffsetMm) <= OuterOffsetToleranceMm;
-                                _isOuterAngleOk = Math.Abs(_lastOuterAngle - TargetOuterAngleDeg) <= OuterAngleToleranceDeg;
+                                _isOuterAngleOk = Math.Abs(LastOuterAngleDeg - TargetOuterAngleDeg) <= OuterAngleToleranceDeg;
                                 if (_isOuterOffsetOk && _isOuterAngleOk) isOuterOk = true;
                             }
 
                             if (EnableHoleCheck && _detectedHoles.Count >= 2 && isBtmDetected)
                             {
-                                _lastHoleAngle = (hole_tilt_rad - btm_tilt_rad) * 180.0 / Math.PI;
+                                LastHoleAngleDeg = (hole_tilt_rad - btm_tilt_rad) * 180.0 / Math.PI;
                                 double expected_btm_X = _holeTopCenter.X - (_btmCenter.Y - _holeTopCenter.Y) * Math.Tan(hole_tilt_rad);
                                 _projectedBtmHole = new CvPoint((int)expected_btm_X, _btmCenter.Y);
                                 _lastHoleOffsetMm = (_btmCenter.X - expected_btm_X) * PixelToMmRatio;
 
                                 _isHoleOffsetOk = Math.Abs(_lastHoleOffsetMm - TargetXOffsetMm) <= OffsetToleranceMm;
-                                _isHoleAngleOk = Math.Abs(_lastHoleAngle - TargetAngleDeg) <= AngleToleranceDeg;
+                                _isHoleAngleOk = Math.Abs(LastHoleAngleDeg - TargetAngleDeg) <= AngleToleranceDeg;
                                 if (_isHoleOffsetOk && _isHoleAngleOk) isHoleOk = true;
                             }
 
@@ -501,22 +484,10 @@ namespace _20260224SolderInspec
                             if (!isJigOkFlag) return 2;
 
                             bool finalOk = false;
-                            if (EnableOuterTiltCheck && EnableHoleCheck)
-                            {
-                                finalOk = isOuterOk || isHoleOk;
-                            }
-                            else if (EnableOuterTiltCheck)
-                            {
-                                finalOk = isOuterOk;
-                            }
-                            else if (EnableHoleCheck)
-                            {
-                                finalOk = isHoleOk;
-                            }
-                            else
-                            {
-                                finalOk = true;
-                            }
+                            if (EnableOuterTiltCheck && EnableHoleCheck) { finalOk = isOuterOk || isHoleOk; }
+                            else if (EnableOuterTiltCheck) { finalOk = isOuterOk; }
+                            else if (EnableHoleCheck) { finalOk = isHoleOk; }
+                            else { finalOk = true; }
 
                             _lastResult = finalOk ? 1 : 2;
                             return _lastResult;
@@ -557,7 +528,7 @@ namespace _20260224SolderInspec
 
                 int tx = Math.Max(_outerTopCenter.X, _btmCenter.X) + 40, ty = (_outerTopCenter.Y + _btmCenter.Y) / 2 - 30;
                 string offStr = "[A]Outer Off: " + _lastOuterOffsetMm.ToString("+0.00;-0.00") + "mm";
-                string angStr = "[A]Outer Ang: " + _lastOuterAngle.ToString("+0.00;-0.00") + "deg";
+                string angStr = "[A]Outer Ang: " + LastOuterAngleDeg.ToString("+0.00;-0.00") + "deg";
                 Cv2.PutText(dispMat, offStr, new CvPoint(tx, ty - 15), HersheyFonts.HersheySimplex, 0.7, Scalar.Black, 3);
                 Cv2.PutText(dispMat, offStr, new CvPoint(tx, ty - 15), HersheyFonts.HersheySimplex, 0.7, _isOuterOffsetOk ? Scalar.LimeGreen : Scalar.Red, 1);
                 Cv2.PutText(dispMat, angStr, new CvPoint(tx, ty + 15), HersheyFonts.HersheySimplex, 0.7, Scalar.Black, 3);
@@ -574,7 +545,7 @@ namespace _20260224SolderInspec
 
                 int tx = Math.Max(_holeTopCenter.X, _btmCenter.X) + 40, ty = (_holeTopCenter.Y + _btmCenter.Y) / 2 + 40;
                 string offStr = "[B]Hole Off: " + _lastHoleOffsetMm.ToString("+0.00;-0.00") + "mm";
-                string angStr = "[B]Hole Ang: " + _lastHoleAngle.ToString("+0.00;-0.00") + "deg";
+                string angStr = "[B]Hole Ang: " + LastHoleAngleDeg.ToString("+0.00;-0.00") + "deg";
                 Cv2.PutText(dispMat, offStr, new CvPoint(tx, ty - 15), HersheyFonts.HersheySimplex, 0.7, Scalar.Black, 3);
                 Cv2.PutText(dispMat, offStr, new CvPoint(tx, ty - 15), HersheyFonts.HersheySimplex, 0.7, _isHoleOffsetOk ? Scalar.LimeGreen : Scalar.Red, 1);
                 Cv2.PutText(dispMat, angStr, new CvPoint(tx, ty + 15), HersheyFonts.HersheySimplex, 0.7, Scalar.Black, 3);

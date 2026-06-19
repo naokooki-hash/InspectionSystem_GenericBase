@@ -25,6 +25,7 @@ namespace _20260224SolderInspec
         private MeasurementCore _measurement;
         private PlcCommunicator _plc;
         private AppSettings _appSettings;
+        private ProductionAnalyzer _analyzer = new ProductionAnalyzer();
 
         private PictureBox _pictureBox, _pictureBoxDebug;
         private TabControl _tabControl;
@@ -179,6 +180,22 @@ namespace _20260224SolderInspec
             Button btnReset = new Button { Text = "カウンターリセット", Location = new Point(10, y), Size = new Size(370, 30) };
             btnReset.Click += (s, e) => { _totalCount = _okCount = _ngCount = 0; UpdateCounterDisplay(); };
             tab.Controls.Add(btnReset); y += 45;
+
+            Button btnDashboard = new Button
+            {
+                Text = "📊 稼働・品質分析ダッシュボードを開く",
+                Location = new Point(10, y),
+                Size = new Size(370, 45),
+                BackColor = Color.LightSlateGray,
+                ForeColor = Color.White,
+                Font = new Font(this.Font.FontFamily, 11, FontStyle.Bold)
+            };
+
+            btnDashboard.Click += (s, e) => {
+                FormDashboard dash = new FormDashboard(_analyzer);
+                dash.ShowDialog(this);
+            };
+            tab.Controls.Add(btnDashboard); y += 55;
 
             Button btnTest = new Button { Text = "手動検査テスト", Location = new Point(10, y), Size = new Size(180, 50), BackColor = Color.LightSkyBlue, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
             btnTest.Click += (s, e) => _requestManualTest = true; tab.Controls.Add(btnTest);
@@ -358,7 +375,6 @@ namespace _20260224SolderInspec
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e) { _isMonitoring = false; _isUiLoaded = false; _camera.StopCapture(); _camera.Dispose(); _plc.Disconnect(); SaveConfig(); }
 
-        // ★修正点1：実測の輝度(brightness)を受け取れるように引数を追加
         private void AppendDailyLog(int result, double brightness)
         {
             try
@@ -373,13 +389,10 @@ namespace _20260224SolderInspec
                 {
                     if (isNewFile)
                     {
-                        // ★修正点2：設定値ではなく「トリガー時輝度(実測値)」を記録するヘッダーに変更
                         sw.WriteLine("時刻,判定,総検査数,良品数(OK),不良数(NG),トリガー時輝度(実測値)");
                     }
 
                     string resStr = (result == 1) ? "OK" : "NG";
-
-                    // ★修正点3：取得した実測輝度(brightness)を小数点以下2桁で書き出し
                     sw.WriteLine($"{DateTime.Now:HH:mm:ss},{resStr},{_totalCount},{_okCount},{_ngCount},{brightness:F2}");
                 }
             }
@@ -414,13 +427,13 @@ namespace _20260224SolderInspec
                 {
                     _procFrameCount++; bool isDebug = _isDebugTabActive; double b = 0;
                     if (_appSettings.TriggerMode == "Visual" || _isRunning || _autoStartCount > 0)
-                        b = _measurement.CalculateBrightness(frame, _roi); // ★ここで毎フレーム輝度を実測している
+                        b = _measurement.CalculateBrightness(frame, _roi);
 
                     if (isDebug) _measurement.UpdateDebugImageRealtime(frame, _saveRoi);
                     bool forceUiUpdate = false;
 
-                    if (_requestManualTest) { _requestManualTest = false; int manualResult = _measurement.Inspect(frame, _saveRoi, isDebug); SafeInvoke(() => UpdateResultDisplay(manualResult, true)); _pendingSaveResult = manualResult; forceUiUpdate = true; }
-                    if (_requestErrorTest) { _requestErrorTest = false; int forceNgResult = 2; _plc.SendResult(false); if (_appSettings.TriggerMode == "Plc") Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0)); SafeInvoke(() => UpdateResultDisplay(forceNgResult, true)); _pendingSaveResult = forceNgResult; forceUiUpdate = true; }
+                    if (_requestManualTest) { _requestManualTest = false; int manualResult = _measurement.Inspect(frame, _saveRoi, isDebug); SafeInvoke(() => UpdateResultDisplay(manualResult, true, b)); _pendingSaveResult = manualResult; forceUiUpdate = true; }
+                    if (_requestErrorTest) { _requestErrorTest = false; int forceNgResult = 2; _plc.SendResult(false); if (_appSettings.TriggerMode == "Plc") Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0)); SafeInvoke(() => UpdateResultDisplay(forceNgResult, true, b)); _pendingSaveResult = forceNgResult; forceUiUpdate = true; }
 
                     UpdateStateMachine(frame, b, isDebug);
                     if (_pendingSaveResult != -1) forceUiUpdate = true;
@@ -482,7 +495,6 @@ namespace _20260224SolderInspec
                                 SafeInvoke(() => lblStateUpdate("FALLBACK HOLE...", Color.Orange));
                             }
 
-                            // ★修正点4：実測輝度(b)を引数として引き渡す
                             if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(inspectResult, b); _currentState = STATE_COOLING; _cooldownStartTime = DateTime.Now; }
                             else { _currentRetry++; _stabilityStartTime = DateTime.Now; SafeInvoke(() => lblStateUpdate($"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange)); }
                         }
@@ -504,7 +516,6 @@ namespace _20260224SolderInspec
                                     SafeInvoke(() => lblStateUpdate("FALLBACK HOLE...", Color.Orange));
                                 }
 
-                                // ★修正点5：実測輝度(b)を引数として引き渡す
                                 if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(inspectResult, b); _currentState = STATE_COOLING; _cooldownStartTime = DateTime.Now; }
                                 else { _currentRetry++; _stabilityStartTime = DateTime.Now; SafeInvoke(() => lblStateUpdate($"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange)); }
                             }
@@ -521,13 +532,17 @@ namespace _20260224SolderInspec
 
         private void lblStateUpdate(string text, Color color) { if (_lblBigResult != null && !_lblBigResult.IsDisposed) { _lblBigResult.Text = text; _lblBigResult.BackColor = color; } }
 
-        // ★修正点6：シグネチャに brightness を追加
         private void ProcessInspectionResult(int inspectResult, double brightness)
         {
             _plc.SendResult(inspectResult == 1);
             if (_appSettings.TriggerMode == "Plc") Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
             SafeInvoke(() => UpdateResultDisplay(inspectResult, false, brightness));
             _pendingSaveResult = inspectResult;
+
+            // ★分析モジュールへの登録処理
+            double lastAngle = _measurement.LastOuterAngleDeg; // 最後の実測角度
+            bool isOk = (inspectResult == 1);
+            _analyzer.AddRecord(lastAngle, brightness, isOk, _logDirPath);
         }
 
         private void UpdateUIDisplay(Mat frame, double b, bool isDebug)
@@ -568,7 +583,6 @@ namespace _20260224SolderInspec
             try { Mat imgToSave = img.Clone(); Task.Run(() => { try { string dir = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd")); if (!Directory.Exists(dir)) Directory.CreateDirectory(dir); string resStr = (res == 1) ? "OK" : "NG"; string fileName = string.Format("{0:HHmmss_fff}_{1}.jpg", DateTime.Now, resStr); string path = Path.Combine(dir, fileName); CvRect crop = _saveRoi & new CvRect(0, 0, imgToSave.Width, imgToSave.Height); using (Mat cropped = new Mat(imgToSave, crop)) using (Mat resized = new Mat()) { Cv2.Resize(cropped, resized, new CvSize(cropped.Width / 2, cropped.Height / 2)); var p = new ImageEncodingParam(ImwriteFlags.JpegQuality, 65); Cv2.ImWrite(path, resized, p); } } catch { } finally { if (imgToSave != null && !imgToSave.IsDisposed) imgToSave.Dispose(); } }); } catch { }
         }
 
-        // ★修正点7：シグネチャに brightness を追加し、AppendDailyLog に渡す
         private void UpdateResultDisplay(int res, bool manual, double brightness = 0.0)
         {
             if (_lblBigResult == null || _lblBigResult.IsDisposed) return;
