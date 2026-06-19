@@ -11,8 +11,8 @@ namespace _20260224SolderInspec
         {
             public DateTime Timestamp { get; set; }
             public double CycleTimeSec { get; set; }
-            public double Angle { get; set; }
-            public double Brightness { get; set; }
+            public double TargetValue { get; set; }  // 汎用化: 角度や寸法など
+            public double EnvValue { get; set; }     // 汎用化: 輝度や面積など
             public string Result { get; set; }
             public string StoppageType { get; set; }
         }
@@ -20,20 +20,23 @@ namespace _20260224SolderInspec
         private List<InspectionRecord> _records = new List<InspectionRecord>();
         private DateTime _lastTriggerTime = DateTime.MinValue;
 
+        // 【完全汎用化】プロジェクトごとに設定できる名前と単位
+        public string TargetValueName { get; set; } = "測定値";
+        public string TargetValueUnit { get; set; } = "unit";
+        public string EnvValueName { get; set; } = "環境値";
+        public string EnvValueUnit { get; set; } = "val";
+
         public double ChocoTeiThresholdSec { get; set; } = 10.0;
         public double DokaTeiThresholdSec { get; set; } = 60.0;
-        public double AngleUpperSpecification { get; set; } = 2.5;
-        public double AngleLowerSpecification { get; set; } = -2.5;
+        public double TargetUpperSpecification { get; set; } = 2.5;  // USL
+        public double TargetLowerSpecification { get; set; } = -2.5; // LSL
 
-        public void AddRecord(double angle, double brightness, bool isOk, string logDirPath)
+        public void AddRecord(double targetVal, double envVal, bool isOk, string logDirPath)
         {
             DateTime now = DateTime.Now;
             double cycleTime = 0;
 
-            if (_lastTriggerTime != DateTime.MinValue)
-            {
-                cycleTime = (now - _lastTriggerTime).TotalSeconds;
-            }
+            if (_lastTriggerTime != DateTime.MinValue) cycleTime = (now - _lastTriggerTime).TotalSeconds;
             _lastTriggerTime = now;
 
             string stoppageType = "正常";
@@ -44,14 +47,13 @@ namespace _20260224SolderInspec
             {
                 Timestamp = now,
                 CycleTimeSec = cycleTime,
-                Angle = angle,
-                Brightness = brightness,
+                TargetValue = targetVal,
+                EnvValue = envVal,
                 Result = isOk ? "OK" : "NG",
                 StoppageType = stoppageType
             };
 
             _records.Add(record);
-
             if (_records.Count > 5000) _records.RemoveAt(0);
 
             WriteDetailedCsv(record, logDirPath);
@@ -61,36 +63,24 @@ namespace _20260224SolderInspec
         {
             try
             {
-                // 1. まず大元の「Logs」フォルダが確実に存在するかチェックして作成
-                if (!Directory.Exists(logDirPath))
-                {
-                    Directory.CreateDirectory(logDirPath);
-                }
-
-                // 2. 今日の日付フォルダ（例: 20260619）の存在確認と作成
+                if (!Directory.Exists(logDirPath)) Directory.CreateDirectory(logDirPath);
                 string dir = Path.Combine(logDirPath, DateTime.Now.ToString("yyyyMMdd"));
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
                 string logFile = Path.Combine(dir, "ProductionAnalysisLog.csv");
                 bool isNewFile = !File.Exists(logFile);
 
-                // 3. CSVファイルへの書き込み（ファイルが無ければ自動生成される）
                 using (StreamWriter sw = new StreamWriter(logFile, true, System.Text.Encoding.UTF8))
                 {
                     if (isNewFile)
                     {
-                        sw.WriteLine("時刻,判定,サイクルタイム(秒),停止タイプ,実測角度,実測輝度");
+                        // ヘッダーがプロジェクトの設定名に自動で切り替わります
+                        sw.WriteLine($"時刻,判定,サイクルタイム(秒),停止タイプ,{TargetValueName},{EnvValueName}");
                     }
-                    sw.WriteLine($"{r.Timestamp:HH:mm:ss},{r.Result},{r.CycleTimeSec:F2},{r.StoppageType},{r.Angle:F2},{r.Brightness:F2}");
+                    sw.WriteLine($"{r.Timestamp:HH:mm:ss},{r.Result},{r.CycleTimeSec:F2},{r.StoppageType},{r.TargetValue:F3},{r.EnvValue:F2}");
                 }
             }
-            catch
-            {
-                // 万が一OSのロック等で書き込めなくても、アプリ全体はクラッシュさせない
-            }
+            catch { }
         }
 
         public List<InspectionRecord> GetRecords() => _records.ToList();
@@ -100,30 +90,25 @@ namespace _20260224SolderInspec
         public (double Cp, double Cpk, double Average, double StdDev) CalculateCpCpk()
         {
             if (_records.Count < 2) return (0, 0, 0, 0);
-
-            double[] data = _records.Select(r => r.Angle).ToArray();
+            double[] data = _records.Select(r => r.TargetValue).ToArray();
             double avg = data.Average();
             double sumOfSquares = data.Select(val => (val - avg) * (val - avg)).Sum();
             double stdDev = Math.Sqrt(sumOfSquares / (data.Length - 1));
 
             if (stdDev == 0) return (0, 0, avg, 0);
-
-            double cp = (AngleUpperSpecification - AngleLowerSpecification) / (6 * stdDev);
-            double cpu = (AngleUpperSpecification - avg) / (3 * stdDev);
-            double cpl = (avg - AngleLowerSpecification) / (3 * stdDev);
-            double cpk = Math.Min(cpu, cpl);
-
-            return (cp, cpk, avg, stdDev);
+            double cp = (TargetUpperSpecification - TargetLowerSpecification) / (6 * stdDev);
+            double cpu = (TargetUpperSpecification - avg) / (3 * stdDev);
+            double cpl = (avg - TargetLowerSpecification) / (3 * stdDev);
+            return (cp, Math.Min(cpu, cpl), avg, stdDev);
         }
 
-        public (double Average, double StdDev) CalculateBrightnessStats()
+        public (double Average, double StdDev) CalculateEnvStats()
         {
             if (_records.Count < 2) return (0, 0);
-            double[] data = _records.Select(r => r.Brightness).ToArray();
+            double[] data = _records.Select(r => r.EnvValue).ToArray();
             double avg = data.Average();
             double sumOfSquares = data.Select(val => (val - avg) * (val - avg)).Sum();
-            double stdDev = Math.Sqrt(sumOfSquares / (data.Length - 1));
-            return (avg, stdDev);
+            return (avg, Math.Sqrt(sumOfSquares / (data.Length - 1)));
         }
     }
 }
