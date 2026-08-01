@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text.Json;
 
@@ -10,12 +10,14 @@ namespace _20260224SolderInspec
     public class AppSettings
     {
         // --- PLC通信設定 ---
-        public string PlcIpAddress { get; set; } = "192.168.0.19"; // 今回成功したIPアドレス
-        public int PlcPort { get; set; } = 5002;
+        public string PlcIpAddress { get; set; } = "192.168.3.250"; // 実機IPアドレス
+        public int PlcPort { get; set; } = 5000;                     // 実機ポート
 
         // --- デバイスアドレス設定 ---
-        public int WriteDeviceAddress { get; set; } = 100; // 判定結果を書き込む先 (D100)
-        public int ReadDeviceAddress { get; set; } = 101;  // トリガー信号を読み取る先 (D101)
+        public int OkDeviceAddress { get; set; } = 100;    // 良品結果書き込み先 (M100)
+        public int NgDeviceAddress { get; set; } = 101;    // 不良品結果書き込み先 (M101)
+        public int ReadDeviceAddress { get; set; } = 102;  // トリガー信号を読み取る先 (M102)
+        public int WriteDeviceAddress { get; set; } = 100; // 互換用
 
         // --- 動作モード設定 ---
         public string TriggerMode { get; set; } = "Plc"; // "Plc" または "Visual"

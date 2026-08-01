@@ -29,6 +29,7 @@ namespace _20260224SolderInspec
 
         private PictureBox _pictureBox, _pictureBoxDebug;
         private TabControl _tabControl;
+        private TextBox _txtLog;
 
         private Label _lblStatus, _lblBrightness, _lblFps, _lblBigResult, _lblTotal, _lblOk, _lblNg, _lblCurrentHoleDistPx;
 
@@ -40,6 +41,7 @@ namespace _20260224SolderInspec
         private Button _btnRunToggle;
         private bool _isRunning = false;
         private bool _requestErrorTest = false;
+        private bool _requestOkTest = false; // ★テスト用: 強制OKフラグ
 
         private NumericUpDown _nudTriggerThreshold, _nudStabilityDuration, _nudResetThreshold;
         private NumericUpDown _nudRoiX, _nudRoiY, _nudRoiW, _nudRoiH;
@@ -122,10 +124,14 @@ namespace _20260224SolderInspec
             InitializeCustomUI();
             _camera.OnFrameCaptured += Camera_OnFrameCaptured;
 
+            _plc.OnLog += (msg, isErr) => AppendLog(msg, isErr);
+
             LoadConfig();
 
             this.Load += Form1_Load;
             this.FormClosing += Form1_FormClosing;
+
+            AppendLog("アプリケーションを起動しました。");
         }
 
         private void InitializeCustomUI()
@@ -136,6 +142,19 @@ namespace _20260224SolderInspec
 
             _pictureBox = new PictureBox { Location = new Point(10, 10), Size = new Size(640, 480), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black, BorderStyle = BorderStyle.FixedSingle };
             this.Controls.Add(_pictureBox);
+
+            _txtLog = new TextBox
+            {
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Location = new Point(10, 500),
+                Size = new Size(640, 290),
+                BackColor = Color.Black,
+                ForeColor = Color.LightGreen,
+                Font = new Font("Consolas", 9)
+            };
+            this.Controls.Add(_txtLog);
 
             int px = 660;
             _lblStatus = new Label { Text = "Status: STOPPED", Location = new Point(px, 10), AutoSize = true, Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold), ForeColor = Color.Red };
@@ -197,11 +216,16 @@ namespace _20260224SolderInspec
             };
             tab.Controls.Add(btnDashboard); y += 55;
 
-            Button btnTest = new Button { Text = "手動検査テスト", Location = new Point(10, y), Size = new Size(180, 50), BackColor = Color.LightSkyBlue, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
-            btnTest.Click += (s, e) => _requestManualTest = true; tab.Controls.Add(btnTest);
+            Button btnTest = new Button { Text = "手動検査テスト", Location = new Point(10, y), Size = new Size(370, 35), BackColor = Color.LightSkyBlue, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
+            btnTest.Click += (s, e) => { _requestManualTest = true; _requestOkTest = false; _requestErrorTest = false; }; tab.Controls.Add(btnTest); y += 40;
 
-            Button btnTestNg = new Button { Text = "強制NGテスト", Location = new Point(200, y), Size = new Size(180, 50), BackColor = Color.Orange, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
-            btnTestNg.Click += (s, e) => _requestErrorTest = true; tab.Controls.Add(btnTestNg);
+            // ★ テスト用ボタンブロック（不要になったらここから）
+            Button btnTestOk = new Button { Text = "強制OKテスト", Location = new Point(10, y), Size = new Size(180, 35), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
+            btnTestOk.Click += (s, e) => { _requestOkTest = true; _requestErrorTest = false; }; tab.Controls.Add(btnTestOk);
+
+            Button btnTestNg = new Button { Text = "強制NGテスト", Location = new Point(200, y), Size = new Size(180, 35), BackColor = Color.Orange, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
+            btnTestNg.Click += (s, e) => { _requestErrorTest = true; _requestOkTest = false; }; tab.Controls.Add(btnTestNg);
+            // ★ テスト用ボタンブロック（ここまで削除可能）
         }
 
         private void InitializeSettingsTab(TabPage tab)
@@ -403,7 +427,71 @@ namespace _20260224SolderInspec
 
         private void DeleteOldLogs() { if (_logKeepDays <= 0) return; try { if (!Directory.Exists(_logDirPath)) return; DateTime thresholdDate = DateTime.Now.Date.AddDays(-_logKeepDays); var dirs = Directory.GetDirectories(_logDirPath); foreach (var dir in dirs) { string dirName = new DirectoryInfo(dir).Name; if (DateTime.TryParseExact(dirName, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out DateTime dirDate)) { if (dirDate.Date < thresholdDate) Directory.Delete(dir, true); } } } catch { } }
 
-        private async Task MonitorPlcTriggerAsync() { _isMonitoring = true; while (_isMonitoring && !this.IsDisposed) { if (_appSettings.TriggerMode == "Plc") { if (!_plc.IsConnected) await Task.Run(() => _plc.Connect()); if (!_plc.IsConnected) await Task.Delay(1000); else { int triggerValue = await Task.Run(() => _plc.ReadDevice(_appSettings.ReadDeviceAddress)); if (triggerValue == 1) _plcTriggerReceived = true; } } int delayMs = _appSettings.InspectionIntervalMs; if (delayMs <= 0) delayMs = 10; await Task.Delay(delayMs); } }
+        private async Task MonitorPlcTriggerAsync()
+        {
+            _isMonitoring = true;
+            AppendLog("PLC接続・監視ループを開始しました。");
+            while (_isMonitoring && !this.IsDisposed)
+            {
+                if (!_plc.IsConnected)
+                {
+                    await Task.Run(() => _plc.Connect());
+                }
+
+                if (_plc.IsConnected)
+                {
+                    if (_appSettings.TriggerMode == "Plc")
+                    {
+                        int triggerValue = await Task.Run(() => _plc.ReadDevice(_appSettings.ReadDeviceAddress));
+                        if (triggerValue == 1)
+                        {
+                            if (!_plcTriggerReceived)
+                            {
+                                AppendLog($"D{_appSettings.ReadDeviceAddress} より検査トリガを受信しました");
+                            }
+                            _plcTriggerReceived = true;
+                        }
+                    }
+                }
+                else
+                {
+                    // 未接続の場合は再接続を試みる前に少し待機
+                    await Task.Delay(1000);
+                }
+
+                int delayMs = _appSettings.InspectionIntervalMs;
+                if (delayMs <= 0) delayMs = 10;
+                await Task.Delay(delayMs);
+            }
+            AppendLog("PLC接続・監視ループを停止しました。");
+        }
+
+        private void AppendLog(string msg, bool isError = false)
+        {
+            SafeInvoke(() => {
+                string time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                string type = isError ? "[ERROR]" : "[INFO]";
+                string logLine = $"[{time}] {type} {msg}{Environment.NewLine}";
+
+                if (_txtLog != null)
+                {
+                    if (_txtLog.TextLength > 50000)
+                    {
+                        _txtLog.Text = _txtLog.Text.Substring(25000);
+                    }
+                    _txtLog.AppendText(logLine);
+                }
+
+                try
+                {
+                    string dir = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd"));
+                    if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    string logFile = Path.Combine(dir, "PlcCommunicationLog.txt");
+                    File.AppendAllText(logFile, logLine);
+                }
+                catch { }
+            });
+        }
 
         private void SafeInvoke(Action action) { if (!_isUiLoaded || this.IsDisposed || !this.IsHandleCreated || this.Disposing) return; try { this.Invoke(new MethodInvoker(action)); } catch { } }
         private void SafeBeginInvoke(Action action) { if (!_isUiLoaded || this.IsDisposed || !this.IsHandleCreated || this.Disposing) return; try { this.BeginInvoke(new MethodInvoker(action)); } catch { } }
@@ -417,7 +505,7 @@ namespace _20260224SolderInspec
 
             double limitMs = 33.0; if (!_isRunning && _autoStartCount == 0) limitMs = 200.0; else if (_appSettings.TriggerMode == "Plc" && !_isRunning) limitMs = 200.0;
 
-            bool hasForceAction = _plcTriggerReceived || _requestManualTest || _requestErrorTest || _pendingSaveResult != -1;
+            bool hasForceAction = _plcTriggerReceived || _requestManualTest || _requestErrorTest || _requestOkTest || _pendingSaveResult != -1;
             if (!hasForceAction && (DateTime.Now - _lastFrameProcessTime).TotalMilliseconds < limitMs) { frame.Dispose(); return; }
             if (_isProcessing) { frame.Dispose(); return; }
             _isProcessing = true; _lastFrameProcessTime = DateTime.Now;
@@ -433,7 +521,38 @@ namespace _20260224SolderInspec
                     bool forceUiUpdate = false;
 
                     if (_requestManualTest) { _requestManualTest = false; int manualResult = _measurement.Inspect(frame, _saveRoi, isDebug); SafeInvoke(() => UpdateResultDisplay(manualResult, true, b)); _pendingSaveResult = manualResult; forceUiUpdate = true; }
-                    if (_requestErrorTest) { _requestErrorTest = false; int forceNgResult = 2; _plc.SendResult(false); if (_appSettings.TriggerMode == "Plc") Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0)); SafeInvoke(() => UpdateResultDisplay(forceNgResult, true, b)); _pendingSaveResult = forceNgResult; forceUiUpdate = true; }
+                    // ★ テスト用: 強制OKテスト（不要になったら削除可能）
+                    if (_requestOkTest)
+                    {
+                        _requestOkTest = false;
+                        int forceOkResult = 1;
+                        AppendLog($"[TEST] 強制OKテスト要求を受信しました。判定結果(OK)を送信します");
+                        _plc.SendResult(true);
+                        if (_appSettings.TriggerMode == "Plc")
+                        {
+                            AppendLog($"[TEST] PLCのトリガアドレス M{_appSettings.ReadDeviceAddress} をクリア (0書き込み) します");
+                            Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+                        }
+                        SafeInvoke(() => UpdateResultDisplay(forceOkResult, true, b));
+                        _pendingSaveResult = forceOkResult;
+                        forceUiUpdate = true;
+                    }
+
+                    if (_requestErrorTest)
+                    {
+                        _requestErrorTest = false;
+                        int forceNgResult = 2;
+                        AppendLog($"[TEST] 強制NGテスト要求を受信しました。判定結果(NG)を送信します");
+                        _plc.SendResult(false);
+                        if (_appSettings.TriggerMode == "Plc")
+                        {
+                            AppendLog($"[TEST] PLCのトリガアドレス M{_appSettings.ReadDeviceAddress} をクリア (0書き込み) します");
+                            Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+                        }
+                        SafeInvoke(() => UpdateResultDisplay(forceNgResult, true, b));
+                        _pendingSaveResult = forceNgResult;
+                        forceUiUpdate = true;
+                    }
 
                     UpdateStateMachine(frame, b, isDebug);
                     if (_pendingSaveResult != -1) forceUiUpdate = true;
@@ -474,6 +593,13 @@ namespace _20260224SolderInspec
                         _currentRetry = 0;
                         if (_chkEnableOuterTiltCheck != null) _measurement.EnableOuterTiltCheck = _chkEnableOuterTiltCheck.Checked;
                         if (_chkEnableHoleCheck != null) _measurement.EnableHoleCheck = _chkEnableHoleCheck.Checked;
+
+                        // 検査開始前に前回の良品/不良品出力をクリア
+                        AppendLog("検査開始のため前回の判定出力をクリアします。");
+                        Task.Run(() => {
+                            _plc.WriteDevice(_appSettings.OkDeviceAddress, 0);
+                            _plc.WriteDevice(_appSettings.NgDeviceAddress, 0);
+                        });
 
                         if (_appSettings.TriggerMode == "Plc") { _plcTriggerReceived = false; _currentState = STATE_STABILIZING; _stabilityStartTime = DateTime.Now; SafeInvoke(() => lblStateUpdate("DELAYING...", Color.Yellow)); }
                         else { if (isTriggerEdge) { _currentState = STATE_STABILIZING; _stabilityStartTime = DateTime.Now; SafeInvoke(() => lblStateUpdate("TESTING...", Color.Yellow)); } }
@@ -534,14 +660,19 @@ namespace _20260224SolderInspec
 
         private void ProcessInspectionResult(int inspectResult, double brightness)
         {
-            _plc.SendResult(inspectResult == 1);
-            if (_appSettings.TriggerMode == "Plc") Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+            bool isOk = (inspectResult == 1);
+            AppendLog($"検査完了。結果: {(isOk ? "OK" : "NG")} (D{_appSettings.WriteDeviceAddress} に判定結果を送信します)");
+            _plc.SendResult(isOk);
+            if (_appSettings.TriggerMode == "Plc")
+            {
+                AppendLog($"PLCのトリガアドレス D{_appSettings.ReadDeviceAddress} をクリア (0書き込み) します");
+                Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+            }
             SafeInvoke(() => UpdateResultDisplay(inspectResult, false, brightness));
             _pendingSaveResult = inspectResult;
 
             // ★分析モジュールへの登録処理
             double lastAngle = _measurement.LastOuterAngleDeg; // 最後の実測角度
-            bool isOk = (inspectResult == 1);
             _analyzer.AddRecord(lastAngle, brightness, isOk, _logDirPath);
         }
 
