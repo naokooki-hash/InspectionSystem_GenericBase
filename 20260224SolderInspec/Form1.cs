@@ -137,7 +137,7 @@ namespace _20260224SolderInspec
         private void InitializeCustomUI()
         {
             this.Text = "Punching Metal Auto Inspection System (Bulletproof Dual-Engine)";
-            this.Size = new Size(1100, 850);
+            this.Size = new Size(1100, 550);
             this.StartPosition = FormStartPosition.CenterScreen;
 
             _pictureBox = new PictureBox { Location = new Point(10, 10), Size = new Size(640, 480), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black, BorderStyle = BorderStyle.FixedSingle };
@@ -154,7 +154,7 @@ namespace _20260224SolderInspec
                 ForeColor = Color.LightGreen,
                 Font = new Font("Consolas", 9)
             };
-            this.Controls.Add(_txtLog);
+            // _txtLog will be added to the Settings tab later instead of main Form
 
             int px = 660;
             _lblStatus = new Label { Text = "Status: STOPPED", Location = new Point(px, 10), AutoSize = true, Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold), ForeColor = Color.Red };
@@ -162,7 +162,7 @@ namespace _20260224SolderInspec
             _lblFps = new Label { Text = "FPS: --", Location = new Point(px + 180, 40), AutoSize = true, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold), ForeColor = Color.Blue };
             this.Controls.Add(_lblStatus); this.Controls.Add(_lblBrightness); this.Controls.Add(_lblFps);
 
-            _tabControl = new TabControl { Location = new Point(px, 80), Size = new Size(410, 710), Font = new Font(this.Font.FontFamily, 10) };
+            _tabControl = new TabControl { Location = new Point(px, 80), Size = new Size(410, 410), Font = new Font(this.Font.FontFamily, 10) };
             _tabControl.SelectedIndexChanged += (s, e) => { _isDebugTabActive = (_tabControl.SelectedIndex == 3); };
             this.Controls.Add(_tabControl);
 
@@ -218,14 +218,6 @@ namespace _20260224SolderInspec
 
             Button btnTest = new Button { Text = "手動検査テスト", Location = new Point(10, y), Size = new Size(370, 35), BackColor = Color.LightSkyBlue, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
             btnTest.Click += (s, e) => { _requestManualTest = true; _requestOkTest = false; _requestErrorTest = false; }; tab.Controls.Add(btnTest); y += 40;
-
-            // ★ テスト用ボタンブロック（不要になったらここから）
-            Button btnTestOk = new Button { Text = "強制OKテスト", Location = new Point(10, y), Size = new Size(180, 35), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
-            btnTestOk.Click += (s, e) => { _requestOkTest = true; _requestErrorTest = false; }; tab.Controls.Add(btnTestOk);
-
-            Button btnTestNg = new Button { Text = "強制NGテスト", Location = new Point(200, y), Size = new Size(180, 35), BackColor = Color.Orange, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
-            btnTestNg.Click += (s, e) => { _requestErrorTest = true; _requestOkTest = false; }; tab.Controls.Add(btnTestNg);
-            // ★ テスト用ボタンブロック（ここまで削除可能）
         }
 
         private void InitializeSettingsTab(TabPage tab)
@@ -282,7 +274,22 @@ namespace _20260224SolderInspec
             AddN("Save ROI W:", ref _nudSaveRoiW, 1, 3000, _saveRoi.Width); AddN("Save ROI H:", ref _nudSaveRoiH, 1, 3000, _saveRoi.Height); y += 20;
 
             Button btnSave = new Button { Text = "設定を保存する (Save)", Location = new Point(10, y), Size = new Size(360, 40), BackColor = Color.LightGreen };
-            btnSave.Click += (s, e) => { SaveConfig(); MessageBox.Show("保存しました。"); }; tab.Controls.Add(btnSave);
+            btnSave.Click += (s, e) => { SaveConfig(); MessageBox.Show("保存しました。"); }; tab.Controls.Add(btnSave); y += 60;
+
+            tab.Controls.Add(new Label { Text = "--- デバッグ / メンテナンス ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkOrange }); y += 22;
+
+            Button btnTestOk = new Button { Text = "強制OKテスト", Location = new Point(10, y), Size = new Size(180, 35), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
+            btnTestOk.Click += (s, e) => { _requestOkTest = true; _requestErrorTest = false; }; tab.Controls.Add(btnTestOk);
+
+            Button btnTestNg = new Button { Text = "強制NGテスト", Location = new Point(200, y), Size = new Size(180, 35), BackColor = Color.Orange, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
+            btnTestNg.Click += (s, e) => { _requestErrorTest = true; _requestOkTest = false; }; tab.Controls.Add(btnTestNg); y += 45;
+
+            if (_txtLog != null) {
+                _txtLog.Location = new Point(10, y);
+                _txtLog.Size = new Size(370, 200);
+                tab.Controls.Add(_txtLog);
+                y += 210;
+            }
         }
 
         private void InitializeInspectionTab(TabPage tab)
