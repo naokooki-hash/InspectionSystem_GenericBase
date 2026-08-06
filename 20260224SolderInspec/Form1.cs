@@ -194,6 +194,76 @@ namespace _20260224SolderInspec
             TabPage t2 = new TabPage("設定 (Settings)") { AutoScroll = true }; InitializeSettingsTab(t2); _tabControl.TabPages.Add(t2);
             TabPage t3 = new TabPage("検査設定 (Inspection)") { AutoScroll = true }; InitializeInspectionTab(t3); _tabControl.TabPages.Add(t3);
             TabPage t4 = new TabPage("画像確認 (Debug)") { AutoScroll = true }; InitializeDebugTab(t4); _tabControl.TabPages.Add(t4);
+            TabPage t5 = new TabPage("PLC設定 (PLC Comms)") { AutoScroll = true }; InitializePlcCommsTab(t5); _tabControl.TabPages.Add(t5);
+        }
+
+        private void InitializePlcCommsTab(TabPage tab)
+        {
+            int y = 10, lw = 150, cw = 120, lh = 28;
+            void AddL(string txt) { tab.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(lw, 20) }); }
+
+            tab.Controls.Add(new Label { Text = "--- PLC通信設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
+
+            AddL("IPアドレス:");
+            TextBox txtIp = new TextBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), Text = _appSettings.PlcIpAddress };
+            txtIp.TextChanged += (s, e) => { _appSettings.PlcIpAddress = txtIp.Text; }; tab.Controls.Add(txtIp); y += lh;
+
+            AddL("ポート:");
+            NumericUpDown nudPort = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 1, Maximum = 65535, Value = _appSettings.PlcPort };
+            nudPort.ValueChanged += (s, e) => { _appSettings.PlcPort = (int)nudPort.Value; }; tab.Controls.Add(nudPort); y += lh;
+
+            AddL("ベンダー:");
+            ComboBox cmbVendor = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbVendor.Items.AddRange(new object[] { "Mitsubishi", "Keyence" });
+            cmbVendor.SelectedItem = _appSettings.PlcVendor;
+            cmbVendor.SelectedIndexChanged += (s, e) => { _appSettings.PlcVendor = cmbVendor.SelectedItem.ToString(); }; tab.Controls.Add(cmbVendor); y += lh;
+
+            AddL("データ型:");
+            ComboBox cmbDataType = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbDataType.Items.AddRange(new object[] { "Bit", "Word" });
+            cmbDataType.SelectedItem = _appSettings.PlcDataType;
+            cmbDataType.SelectedIndexChanged += (s, e) => { _appSettings.PlcDataType = cmbDataType.SelectedItem.ToString(); }; tab.Controls.Add(cmbDataType); y += lh;
+            y += 10;
+
+            tab.Controls.Add(new Label { Text = "--- デバイスアドレス設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
+
+            AddL("Heartbeat (常時監視):");
+            NumericUpDown nudHeartbeat = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.HeartbeatAddress };
+            nudHeartbeat.ValueChanged += (s, e) => { _appSettings.HeartbeatAddress = (int)nudHeartbeat.Value; }; tab.Controls.Add(nudHeartbeat); y += lh;
+            y += 10;
+
+            tab.Controls.Add(new Label { Text = "【Cam1】", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkOrange }); y += 22;
+            AddL("読取 (Trigger):");
+            NumericUpDown nudC1Read = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.Cam1.ReadDeviceAddress };
+            nudC1Read.ValueChanged += (s, e) => { _appSettings.Cam1.ReadDeviceAddress = (int)nudC1Read.Value; }; tab.Controls.Add(nudC1Read); y += lh;
+            AddL("書込 (OK):");
+            NumericUpDown nudC1Ok = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.Cam1.OkDeviceAddress };
+            nudC1Ok.ValueChanged += (s, e) => { _appSettings.Cam1.OkDeviceAddress = (int)nudC1Ok.Value; _appSettings.Cam1.WriteDeviceAddress = (int)nudC1Ok.Value; }; tab.Controls.Add(nudC1Ok); y += lh;
+            AddL("書込 (NG):");
+            NumericUpDown nudC1Ng = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.Cam1.NgDeviceAddress };
+            nudC1Ng.ValueChanged += (s, e) => { _appSettings.Cam1.NgDeviceAddress = (int)nudC1Ng.Value; }; tab.Controls.Add(nudC1Ng); y += lh;
+            y += 10;
+
+            tab.Controls.Add(new Label { Text = "【Cam2】", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkOrange }); y += 22;
+            AddL("読取 (Trigger):");
+            NumericUpDown nudC2Read = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.Cam2.ReadDeviceAddress };
+            nudC2Read.ValueChanged += (s, e) => { _appSettings.Cam2.ReadDeviceAddress = (int)nudC2Read.Value; }; tab.Controls.Add(nudC2Read); y += lh;
+            AddL("書込 (OK):");
+            NumericUpDown nudC2Ok = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.Cam2.OkDeviceAddress };
+            nudC2Ok.ValueChanged += (s, e) => { _appSettings.Cam2.OkDeviceAddress = (int)nudC2Ok.Value; _appSettings.Cam2.WriteDeviceAddress = (int)nudC2Ok.Value; }; tab.Controls.Add(nudC2Ok); y += lh;
+            AddL("書込 (NG):");
+            NumericUpDown nudC2Ng = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.Cam2.NgDeviceAddress };
+            nudC2Ng.ValueChanged += (s, e) => { _appSettings.Cam2.NgDeviceAddress = (int)nudC2Ng.Value; }; tab.Controls.Add(nudC2Ng); y += lh;
+            y += 20;
+
+            Button btnSaveAndReconnect = new Button { Text = "保存して再接続", Location = new Point(10, y), Size = new Size(300, 40), BackColor = Color.LightGreen };
+            btnSaveAndReconnect.Click += (s, e) => {
+                _appSettings.Save();
+                _plc.Disconnect();
+                _plc.Connect();
+                MessageBox.Show("設定を保存し、再接続を試みました。");
+            };
+            tab.Controls.Add(btnSaveAndReconnect);
         }
 
         private void InitializeMainTab(TabPage tab)

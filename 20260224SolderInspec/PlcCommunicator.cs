@@ -10,6 +10,8 @@ namespace _20260224SolderInspec
         private TcpClient _client;
         private NetworkStream _stream;
         private AppSettings _settings;
+        private readonly SemaphoreSlim _tcpLock = new SemaphoreSlim(1, 1);
+        private CancellationTokenSource _heartbeatCts;
 
         public event Action<string, bool>? OnLog;
 
@@ -18,6 +20,33 @@ namespace _20260224SolderInspec
         public PlcCommunicator(AppSettings settings)
         {
             _settings = settings;
+            StartHeartbeat();
+        }
+
+        private void StartHeartbeat()
+        {
+            _heartbeatCts?.Cancel();
+            _heartbeatCts = new CancellationTokenSource();
+            var token = _heartbeatCts.Token;
+
+            Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    if (IsConnected)
+                    {
+                        try
+                        {
+                            ReadDevice(_settings.HeartbeatAddress);
+                        }
+                        catch (Exception ex)
+                        {
+                            Log($"Heartbeat error: {ex.Message}", true);
+                        }
+                    }
+                    await Task.Delay(1000, token);
+                }
+            }, token);
         }
 
         private void Log(string message, bool isError = false)
@@ -79,93 +108,189 @@ namespace _20260224SolderInspec
             return success;
         }
 
-        // --- MCプロトコル: 一括読出し (0401) ※ビット単位 (サブコマンド0001) ---
         public int ReadDevice(int deviceAddress)
         {
             if (!IsConnected) return -1;
 
+            _tcpLock.Wait();
             try
             {
-                // Mレジスタ (90h) - ビット単位での読み出し
-                byte[] addressBytes = BitConverter.GetBytes(deviceAddress);
-                byte[] command = new byte[]
+                if (_settings.PlcVendor == "Keyence")
                 {
-                    0x50, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, // サブヘッダ等
-                    0x0C, 0x00,                               // データ長 (12バイト)
-                    0x10, 0x00,                               // 監視タイマ
-                    0x01, 0x04,                               // コマンド (0401:一括読出し)
-                    0x01, 0x00,                               // サブコマンド (0001:ビット単位)
-                    addressBytes[0], addressBytes[1], 0x00,   // 先頭デバイス番号 (リトルエンディアン)
-                    0x90,                                     // デバイスコード (0x90: Mレジスタ)
-                    0x01, 0x00                                // デバイス点数 (1点)
-                };
+                    string prefix = _settings.PlcDataType == "Word" ? "DM" : "MR";
+                    string cmd = $"RD {prefix}{deviceAddress}\r";
+                    byte[] command = System.Text.Encoding.ASCII.GetBytes(cmd);
+                    _stream.Write(command, 0, command.Length);
 
-                _stream.Write(command, 0, command.Length);
+                    byte[] response = new byte[256];
+                    int bytesRead = _stream.Read(response, 0, response.Length);
+                    string resStr = System.Text.Encoding.ASCII.GetString(response, 0, bytesRead).TrimEnd('\r', '\n');
 
-                byte[] response = new byte[12]; // ヘッダ9 + 終了コード2 + データ1 = 12バイト
-                int bytesRead = _stream.Read(response, 0, response.Length);
+                    if (resStr.EndsWith("E"))
+                    {
+                        Log($"読出し応答エラー: {resStr}", true);
+                        return -1;
+                    }
 
-                if (bytesRead >= 12 && response[9] == 0x00 && response[10] == 0x00) // 終了コード0 (正常)
-                {
-                    // 12バイト目（インデックス11）のデータ部。上位4ビットが 1 (0x10) なら ON
-                    return (response[11] & 0xF0) == 0x10 ? 1 : 0;
+                    if (int.TryParse(resStr, out int val))
+                    {
+                        return val;
+                    }
+                    return -1;
                 }
-                Log($"読出し応答エラー (受信バイト数: {bytesRead})", true);
-                return -1;
+                else // Mitsubishi
+                {
+                    byte[] addressBytes = BitConverter.GetBytes(deviceAddress);
+                    bool isWord = _settings.PlcDataType == "Word";
+
+                    byte subCommand = isWord ? (byte)0x00 : (byte)0x01;
+                    byte deviceCode = isWord ? (byte)0xA8 : (byte)0x90; // A8 = D register, 90 = M register
+
+                    byte[] command = new byte[]
+                    {
+                        0x50, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, // サブヘッダ等
+                        0x0C, 0x00,                               // データ長 (12バイト)
+                        0x10, 0x00,                               // 監視タイマ
+                        0x01, 0x04,                               // コマンド (0401:一括読出し)
+                        subCommand, 0x00,                         // サブコマンド (0000:ワード単位, 0001:ビット単位)
+                        addressBytes[0], addressBytes[1], 0x00,   // 先頭デバイス番号 (リトルエンディアン)
+                        deviceCode,                               // デバイスコード
+                        0x01, 0x00                                // デバイス点数 (1点)
+                    };
+
+                    _stream.Write(command, 0, command.Length);
+
+                    int expectedResponseLength = isWord ? 13 : 12;
+                    byte[] response = new byte[expectedResponseLength];
+                    int bytesRead = _stream.Read(response, 0, response.Length);
+
+                    if (bytesRead >= 11 && response[9] == 0x00 && response[10] == 0x00) // 終了コード0 (正常)
+                    {
+                        if (isWord)
+                        {
+                            if (bytesRead >= 13)
+                                return BitConverter.ToUInt16(response, 11);
+                        }
+                        else
+                        {
+                            if (bytesRead >= 12)
+                                return (response[11] & 0xF0) == 0x10 ? 1 : 0;
+                        }
+                    }
+                    Log($"読出し応答エラー (受信バイト数: {bytesRead})", true);
+                    return -1;
+                }
             }
             catch (Exception ex)
             {
-                Log($"M{deviceAddress} 読出しエラー: {ex.Message}", true);
-                Disconnect(); // エラー時は切断して再接続を促す
+                Log($"{deviceAddress} 読出しエラー: {ex.Message}", true);
+                Disconnect();
                 return -1;
+            }
+            finally
+            {
+                _tcpLock.Release();
             }
         }
 
-        // --- MCプロトコル: 一括書込み (1401) ※ビット単位 (サブコマンド0001) ---
         public bool WriteDevice(int deviceAddress, int writeValue)
         {
             if (!IsConnected) return false;
 
+            _tcpLock.Wait();
             try
             {
-                byte[] addressBytes = BitConverter.GetBytes(deviceAddress);
-                // ビットONは 0x10、OFFは 0x00 (1ニブル指定)
-                byte writeData = writeValue != 0 ? (byte)0x10 : (byte)0x00;
-
-                byte[] command = new byte[]
+                if (_settings.PlcVendor == "Keyence")
                 {
-                    0x50, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00, // サブヘッダ等
-                    0x0D, 0x00,                               // データ長 (13バイト)
-                    0x10, 0x00,                               // 監視タイマ
-                    0x01, 0x14,                               // コマンド (1401:一括書込み)
-                    0x01, 0x00,                               // サブコマンド (0001:ビット単位)
-                    addressBytes[0], addressBytes[1], 0x00,   // 先頭デバイス番号
-                    0x90,                                     // デバイスコード (0x90: Mレジスタ)
-                    0x01, 0x00,                               // デバイス点数 (1点)
-                    writeData                                 // 書込みデータ
-                };
+                    string prefix = _settings.PlcDataType == "Word" ? "DM" : "MR";
+                    string cmd = $"WR {prefix}{deviceAddress} {writeValue}\r";
+                    byte[] command = System.Text.Encoding.ASCII.GetBytes(cmd);
+                    _stream.Write(command, 0, command.Length);
 
-                _stream.Write(command, 0, command.Length);
+                    byte[] response = new byte[256];
+                    int bytesRead = _stream.Read(response, 0, response.Length);
+                    string resStr = System.Text.Encoding.ASCII.GetString(response, 0, bytesRead).TrimEnd('\r', '\n');
 
-                byte[] response = new byte[11];
-                int bytesRead = _stream.Read(response, 0, response.Length);
-
-                bool success = (bytesRead >= 11 && response[9] == 0x00 && response[10] == 0x00);
-                if (success)
-                {
-                    Log($"M{deviceAddress} に {(writeValue != 0 ? "ON" : "OFF")} を書き込みました");
+                    if (resStr == "OK")
+                    {
+                        Log($"{prefix}{deviceAddress} に {writeValue} を書き込みました");
+                        return true;
+                    }
+                    else
+                    {
+                        Log($"{prefix}{deviceAddress} 書込み応答エラー: {resStr}", true);
+                        return false;
+                    }
                 }
-                else
+                else // Mitsubishi
                 {
-                    Log($"M{deviceAddress} 書込み応答エラー (受信バイト数: {bytesRead})", true);
+                    byte[] addressBytes = BitConverter.GetBytes(deviceAddress);
+                    bool isWord = _settings.PlcDataType == "Word";
+
+                    byte subCommand = isWord ? (byte)0x00 : (byte)0x01;
+                    byte deviceCode = isWord ? (byte)0xA8 : (byte)0x90;
+
+                    byte[] writeDataBytes;
+                    int dataLength;
+
+                    if (isWord)
+                    {
+                        writeDataBytes = BitConverter.GetBytes((ushort)writeValue);
+                        dataLength = 14;
+                    }
+                    else
+                    {
+                        writeDataBytes = new byte[] { writeValue != 0 ? (byte)0x10 : (byte)0x00 };
+                        dataLength = 13;
+                    }
+
+                    byte[] command = new byte[dataLength + 9]; // ヘッダ等9バイト分追加
+
+                    // ヘッダ等設定
+                    Buffer.BlockCopy(new byte[] { 0x50, 0x00, 0x00, 0xFF, 0xFF, 0x03, 0x00 }, 0, command, 0, 7);
+
+                    // データ長 (コマンド以降のバイト数)
+                    byte[] lenBytes = BitConverter.GetBytes((ushort)dataLength);
+                    command[7] = lenBytes[0];
+                    command[8] = lenBytes[1];
+
+                    // 残りのヘッダ
+                    command[9] = 0x10; command[10] = 0x00; // 監視タイマ
+                    command[11] = 0x01; command[12] = 0x14; // コマンド (1401:一括書込み)
+                    command[13] = subCommand; command[14] = 0x00;
+                    command[15] = addressBytes[0]; command[16] = addressBytes[1]; command[17] = 0x00;
+                    command[18] = deviceCode;
+                    command[19] = 0x01; command[20] = 0x00; // デバイス点数
+
+                    // 書き込みデータ
+                    Buffer.BlockCopy(writeDataBytes, 0, command, 21, writeDataBytes.Length);
+
+                    _stream.Write(command, 0, command.Length);
+
+                    byte[] response = new byte[11];
+                    int bytesRead = _stream.Read(response, 0, response.Length);
+
+                    bool success = (bytesRead >= 11 && response[9] == 0x00 && response[10] == 0x00);
+                    if (success)
+                    {
+                        Log($"{deviceAddress} に {writeValue} を書き込みました");
+                    }
+                    else
+                    {
+                        Log($"{deviceAddress} 書込み応答エラー (受信バイト数: {bytesRead})", true);
+                    }
+                    return success;
                 }
-                return success;
             }
             catch (Exception ex)
             {
-                Log($"M{deviceAddress} 書込みエラー (値: {writeValue}): {ex.Message}", true);
+                Log($"{deviceAddress} 書込みエラー (値: {writeValue}): {ex.Message}", true);
                 Disconnect();
                 return false;
+            }
+            finally
+            {
+                _tcpLock.Release();
             }
         }
     }
