@@ -24,6 +24,9 @@ namespace _20260224SolderInspec
         // --- PLC通信設定 ---
         public string PlcIpAddress { get; set; } = "192.168.3.250"; // 実機IPアドレス
         public int PlcPort { get; set; } = 5000;                     // 実機ポート
+        public string PlcVendor { get; set; } = "Mitsubishi";        // "Mitsubishi" or "Keyence"
+        public string PlcDataType { get; set; } = "Bit";             // "Bit" or "Word"
+        public int HeartbeatAddress { get; set; } = 0;               // ハートビート用アドレス
 
         // --- カメラ別設定 ---
         public CameraSettings Cam1 { get; set; } = new CameraSettings { OkDeviceAddress = 100, NgDeviceAddress = 101, ReadDeviceAddress = 102, WriteDeviceAddress = 100 };
