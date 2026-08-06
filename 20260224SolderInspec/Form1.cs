@@ -110,6 +110,11 @@ namespace _20260224SolderInspec
         private bool _isMonitoring = false;
         private bool[] _plcTriggerReceived = new bool[2];
 
+        private int _selectedCamIndex = 0;
+        private ComboBox _cmbInspectionCam;
+        private ComboBox _cmbDebugCam;
+        private bool _isUpdatingUI = false;
+
         private int _totalCount = 0, _okCount = 0, _ngCount = 0, _saveMode = 0, _stabilityDurationMs = 300;
         private int[] _pendingSaveResults = new int[] { -1, -1 };
         private bool _triggerOnBright = true;
@@ -337,8 +342,24 @@ namespace _20260224SolderInspec
 
         private void InitializeInspectionTab(TabPage tab)
         {
-            var m = _measurements[0];
-            int y = 10, lw = 160, cw = 100, lh = 28;
+            int y = 10;
+
+            tab.Controls.Add(new Label { Text = "対象カメラ:", Location = new Point(10, y + 2), Size = new Size(100, 20), Font = new Font(this.Font, FontStyle.Bold) });
+            _cmbInspectionCam = new ComboBox { Location = new Point(110, y), Size = new Size(150, 25), DropDownStyle = ComboBoxStyle.DropDownList };
+            _cmbInspectionCam.Items.AddRange(new object[] { "Camera 1", "Camera 2" });
+            _cmbInspectionCam.SelectedIndex = 0;
+            _cmbInspectionCam.SelectedIndexChanged += (s, e) => {
+                if (_isUpdatingUI) return;
+                _selectedCamIndex = _cmbInspectionCam.SelectedIndex;
+                if (_cmbDebugCam != null && _cmbDebugCam.SelectedIndex != _selectedCamIndex)
+                    _cmbDebugCam.SelectedIndex = _selectedCamIndex;
+                LoadSettingsToUI();
+            };
+            tab.Controls.Add(_cmbInspectionCam);
+            y += 40;
+
+            var m = _measurements[_selectedCamIndex];
+            int lw = 160, cw = 100, lh = 28;
             void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M)
             {
                 tab.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(lw, 20) });
@@ -411,8 +432,24 @@ namespace _20260224SolderInspec
 
         private void InitializeDebugTab(TabPage tab)
         {
-            var m = _measurements[0];
-            int y = 10, lw = 150, cw = 100, lh = 28;
+            int y = 10;
+
+            tab.Controls.Add(new Label { Text = "対象カメラ:", Location = new Point(10, y + 2), Size = new Size(100, 20), Font = new Font(this.Font, FontStyle.Bold) });
+            _cmbDebugCam = new ComboBox { Location = new Point(110, y), Size = new Size(150, 25), DropDownStyle = ComboBoxStyle.DropDownList };
+            _cmbDebugCam.Items.AddRange(new object[] { "Camera 1", "Camera 2" });
+            _cmbDebugCam.SelectedIndex = 0;
+            _cmbDebugCam.SelectedIndexChanged += (s, e) => {
+                if (_isUpdatingUI) return;
+                _selectedCamIndex = _cmbDebugCam.SelectedIndex;
+                if (_cmbInspectionCam != null && _cmbInspectionCam.SelectedIndex != _selectedCamIndex)
+                    _cmbInspectionCam.SelectedIndex = _selectedCamIndex;
+                LoadSettingsToUI();
+            };
+            tab.Controls.Add(_cmbDebugCam);
+            y += 40;
+
+            var m = _measurements[_selectedCamIndex];
+            int lw = 150, cw = 100, lh = 28;
             void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M)
             {
                 tab.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(lw, 20) });
@@ -581,7 +618,7 @@ namespace _20260224SolderInspec
             Task.Run(() => {
                 try
                 {
-                    _procFrameCounts[camIndex]++; bool isDebug = _isDebugTabActive && camIndex == 0; double b = 0;
+                    _procFrameCounts[camIndex]++; bool isDebug = _isDebugTabActive && camIndex == _selectedCamIndex; double b = 0;
                     if (_appSettings.TriggerMode == "Visual" || _isRunning || _autoStartCount > 0)
                         b = _measurements[camIndex].CalculateBrightness(frame, _roi);
 
@@ -810,8 +847,8 @@ namespace _20260224SolderInspec
                 if (_pendingSaveResults[camIndex] != -1) { if (_saveMode == 2 || (_saveMode == 1 && _pendingSaveResults[camIndex] != 1)) SaveInspectionImage(disp, _pendingSaveResults[camIndex]); _pendingSaveResults[camIndex] = -1; }
                 Bitmap bmp = BitmapConverter.ToBitmap(disp); Image old = _pictureBoxes[camIndex].Image; _pictureBoxes[camIndex].Image = bmp; old?.Dispose();
             }
-            if (isDebug) { using (Mat binImg = new Mat()) { _measurements[camIndex].GetDebugImage(binImg); if (!binImg.Empty()) { Bitmap bmpD = BitmapConverter.ToBitmap(binImg); Image oldD = _pictureBoxDebug.Image; _pictureBoxDebug.Image = bmpD; oldD?.Dispose(); } } }
-            if (_lblCurrentHoleDistPx != null && !_lblCurrentHoleDistPx.IsDisposed && _measurements[camIndex].LastHoleDistancePx > 0 && camIndex == 0) _lblCurrentHoleDistPx.Text = "現在の穴/エッジ間距離: " + _measurements[camIndex].LastHoleDistancePx.ToString("F1") + " px";
+            if (isDebug && camIndex == _selectedCamIndex) { using (Mat binImg = new Mat()) { _measurements[camIndex].GetDebugImage(binImg); if (!binImg.Empty()) { Bitmap bmpD = BitmapConverter.ToBitmap(binImg); Image oldD = _pictureBoxDebug.Image; _pictureBoxDebug.Image = bmpD; oldD?.Dispose(); } } }
+            if (_lblCurrentHoleDistPx != null && !_lblCurrentHoleDistPx.IsDisposed && _measurements[camIndex].LastHoleDistancePx > 0 && camIndex == _selectedCamIndex) _lblCurrentHoleDistPx.Text = "現在の穴/エッジ間距離: " + _measurements[camIndex].LastHoleDistancePx.ToString("F1") + " px";
 
             if (_lblStatuses[camIndex] != null && !_lblStatuses[camIndex].IsDisposed) {
                 if (!_isRunning) { _lblStatuses[camIndex].Text = $"Cam{camIndex+1} Status: STOPPED"; _lblStatuses[camIndex].ForeColor = Color.Red; }
@@ -880,19 +917,102 @@ namespace _20260224SolderInspec
             m.TargetAngleDeg = (double)_nudTargetAngle.Value; m.AngleToleranceDeg = (double)_nudAngleTolerance.Value;
         }
 
+        private void LoadSettingsToUI()
+        {
+            if (_isLoadingConfig || _isUpdatingUI) return;
+            _isUpdatingUI = true;
+
+            var m = _measurements[_selectedCamIndex];
+
+            // Inspection Tab
+            if (_chkEnableJigCheck != null) _chkEnableJigCheck.Checked = m.EnableJigCheck;
+            if (_chkEnableOuterTiltCheck != null) _chkEnableOuterTiltCheck.Checked = m.EnableOuterTiltCheck;
+            if (_chkEnableHoleCheck != null) _chkEnableHoleCheck.Checked = m.EnableHoleCheck;
+
+            if (_nudTiltLX != null) _nudTiltLX.Value = m.TiltLeftRoi.X;
+            if (_nudTiltLY != null) _nudTiltLY.Value = m.TiltLeftRoi.Y;
+            if (_nudTiltLW != null) _nudTiltLW.Value = m.TiltLeftRoi.Width;
+            if (_nudTiltLH != null) _nudTiltLH.Value = m.TiltLeftRoi.Height;
+
+            if (_nudTiltRX != null) _nudTiltRX.Value = m.TiltRightRoi.X;
+            if (_nudTiltRY != null) _nudTiltRY.Value = m.TiltRightRoi.Y;
+            if (_nudTiltRW != null) _nudTiltRW.Value = m.TiltRightRoi.Width;
+            if (_nudTiltRH != null) _nudTiltRH.Value = m.TiltRightRoi.Height;
+
+            if (_nudOuterTargetX != null) _nudOuterTargetX.Value = (decimal)m.TargetOuterXOffsetMm;
+            if (_nudOuterOffsetX != null) _nudOuterOffsetX.Value = (decimal)m.OuterOffsetToleranceMm;
+            if (_nudOuterTargetA != null) _nudOuterTargetA.Value = (decimal)m.TargetOuterAngleDeg;
+            if (_nudOuterOffsetA != null) _nudOuterOffsetA.Value = (decimal)m.OuterAngleToleranceDeg;
+
+            if (_nudBtmRoiX != null) _nudBtmRoiX.Value = m.BtmMeasureRoi.X;
+            if (_nudBtmRoiY != null) _nudBtmRoiY.Value = m.BtmMeasureRoi.Y;
+            if (_nudBtmRoiW != null) _nudBtmRoiW.Value = m.BtmMeasureRoi.Width;
+            if (_nudBtmRoiH != null) _nudBtmRoiH.Value = m.BtmMeasureRoi.Height;
+
+            if (_nudBtmInnerLX != null) _nudBtmInnerLX.Value = m.BtmInnerLeftRoi.X;
+            if (_nudBtmInnerLY != null) _nudBtmInnerLY.Value = m.BtmInnerLeftRoi.Y;
+            if (_nudBtmInnerLW != null) _nudBtmInnerLW.Value = m.BtmInnerLeftRoi.Width;
+            if (_nudBtmInnerLH != null) _nudBtmInnerLH.Value = m.BtmInnerLeftRoi.Height;
+
+            if (_nudBtmInnerRX != null) _nudBtmInnerRX.Value = m.BtmInnerRightRoi.X;
+            if (_nudBtmInnerRY != null) _nudBtmInnerRY.Value = m.BtmInnerRightRoi.Y;
+            if (_nudBtmInnerRW != null) _nudBtmInnerRW.Value = m.BtmInnerRightRoi.Width;
+            if (_nudBtmInnerRH != null) _nudBtmInnerRH.Value = m.BtmInnerRightRoi.Height;
+
+            if (_nudHolesX != null) _nudHolesX.Value = m.HolesRoi.X;
+            if (_nudHolesY != null) _nudHolesY.Value = m.HolesRoi.Y;
+            if (_nudHolesW != null) _nudHolesW.Value = m.HolesRoi.Width;
+            if (_nudHolesH != null) _nudHolesH.Value = m.HolesRoi.Height;
+            if (_nudMinHoleArea != null) _nudMinHoleArea.Value = m.MinHoleArea;
+            if (_nudMaxHoleArea != null) _nudMaxHoleArea.Value = m.MaxHoleArea;
+            if (_nudMinCircularity != null) _nudMinCircularity.Value = (decimal)m.MinCircularity;
+            if (_nudTargetXOffset != null) _nudTargetXOffset.Value = (decimal)m.TargetXOffsetMm;
+            if (_nudOffsetTolerance != null) _nudOffsetTolerance.Value = (decimal)m.OffsetToleranceMm;
+            if (_nudTargetAngle != null) _nudTargetAngle.Value = (decimal)m.TargetAngleDeg;
+            if (_nudAngleTolerance != null) _nudAngleTolerance.Value = (decimal)m.AngleToleranceDeg;
+
+            if (_nudJigLX != null) _nudJigLX.Value = m.JigLeftRoi.X;
+            if (_nudJigLY != null) _nudJigLY.Value = m.JigLeftRoi.Y;
+            if (_nudJigLW != null) _nudJigLW.Value = m.JigLeftRoi.Width;
+            if (_nudJigLH != null) _nudJigLH.Value = m.JigLeftRoi.Height;
+
+            if (_nudJigRX != null) _nudJigRX.Value = m.JigRightRoi.X;
+            if (_nudJigRY != null) _nudJigRY.Value = m.JigRightRoi.Y;
+            if (_nudJigRW != null) _nudJigRW.Value = m.JigRightRoi.Width;
+            if (_nudJigRH != null) _nudJigRH.Value = m.JigRightRoi.Height;
+
+            if (_nudJigTarget != null) _nudJigTarget.Value = (decimal)m.TargetJigDistanceMm;
+            if (_nudJigTolerance != null) _nudJigTolerance.Value = (decimal)m.JigToleranceMm;
+            if (_nudPixelToMm != null) _nudPixelToMm.Value = (decimal)m.PixelToMmRatio;
+
+            // Debug Tab
+            if (_nudThreshOuterL != null) _nudThreshOuterL.Value = m.ThreshOuterL;
+            if (_nudThreshOuterR != null) _nudThreshOuterR.Value = m.ThreshOuterR;
+            if (_nudThreshBtmInnerL != null) _nudThreshBtmInnerL.Value = m.ThreshBtmInnerL;
+            if (_nudThreshBtmInnerR != null) _nudThreshBtmInnerR.Value = m.ThreshBtmInnerR;
+            if (_nudSplitX != null) _nudSplitX.Value = m.SplitBoundaryX;
+            if (_nudSplitY != null) _nudSplitY.Value = m.SplitBoundaryY;
+            if (_nudThreshTL != null) _nudThreshTL.Value = m.ThreshTopLeft;
+            if (_nudThreshTR != null) _nudThreshTR.Value = m.ThreshTopRight;
+            if (_nudThreshBL != null) _nudThreshBL.Value = m.ThreshBtmLeft;
+            if (_nudThreshBR != null) _nudThreshBR.Value = m.ThreshBtmRight;
+
+            if (_lblCurrentHoleDistPx != null && !_lblCurrentHoleDistPx.IsDisposed)
+                _lblCurrentHoleDistPx.Text = "現在の穴/エッジ間距離: " + m.LastHoleDistancePx.ToString("F1") + " px";
+
+            _isUpdatingUI = false;
+        }
+
         private void UpdateSettingsFromUI()
         {
-            if (_isLoadingConfig) return;
+            if (_isLoadingConfig || _isUpdatingUI) return;
 
             _triggerThreshold = (double)_nudTriggerThreshold.Value; _stabilityDurationMs = (int)_nudStabilityDuration.Value; _resetThreshold = (double)_nudResetThreshold.Value;
             _plcDelayMs = (int)_nudPlcDelayMs.Value; _maxRetryCount = (int)_nudRetryCount.Value; _retryDelayMs = (int)_nudRetryDelayMs.Value;
             _autoStartCount = (int)_nudAutoStartCount.Value; _roi = new CvRect((int)_nudRoiX.Value, (int)_nudRoiY.Value, (int)_nudRoiW.Value, (int)_nudRoiH.Value);
             _saveRoi = new CvRect((int)_nudSaveRoiX.Value, (int)_nudSaveRoiY.Value, (int)_nudSaveRoiW.Value, (int)_nudSaveRoiH.Value); _logKeepDays = (int)_nudLogKeepDays.Value;
 
-            foreach (var m in _measurements)
-            {
-                CopySettingsToMeasurement(m);
-            }
+            CopySettingsToMeasurement(_measurements[_selectedCamIndex]);
         }
 
         private void LoadConfig()
@@ -907,18 +1027,63 @@ namespace _20260224SolderInspec
 
                 var defM = new MeasurementCore();
 
-                var enableJigCheck = d.TryGetValue("EnableJigCheck", out var ej) ? bool.Parse(ej) : defM.EnableJigCheck;
-                bool enableOuterTiltCheck = defM.EnableOuterTiltCheck;
-                bool enableHoleCheck = defM.EnableHoleCheck;
+                // For backward compatibility, if Cam0_ isn't found, try without prefix.
+                // We'll load both cameras.
 
-                if (d.TryGetValue("UseOuterEdgeForTilt", out var uoe))
+                for (int c = 0; c < 2; c++)
                 {
-                    bool useOuter = bool.Parse(uoe); enableOuterTiltCheck = useOuter; enableHoleCheck = !useOuter;
-                }
-                else
-                {
-                    enableOuterTiltCheck = d.TryGetValue("EnableOuterTiltCheck", out var eot) ? bool.Parse(eot) : defM.EnableOuterTiltCheck;
-                    enableHoleCheck = d.TryGetValue("EnableHoleCheck", out var ehc) ? bool.Parse(ehc) : defM.EnableHoleCheck;
+                    string pfx = $"Cam{c}_";
+                    var m = _measurements[c];
+
+                    var enableJigCheck = d.TryGetValue(pfx + "EnableJigCheck", out var ej) ? bool.Parse(ej) : (d.TryGetValue("EnableJigCheck", out ej) ? bool.Parse(ej) : defM.EnableJigCheck);
+                    bool enableOuterTiltCheck = defM.EnableOuterTiltCheck;
+                    bool enableHoleCheck = defM.EnableHoleCheck;
+
+                    if (d.TryGetValue(pfx + "UseOuterEdgeForTilt", out var uoe) || d.TryGetValue("UseOuterEdgeForTilt", out uoe))
+                    {
+                        bool useOuter = bool.Parse(uoe); enableOuterTiltCheck = useOuter; enableHoleCheck = !useOuter;
+                    }
+                    else
+                    {
+                        enableOuterTiltCheck = d.TryGetValue(pfx + "EnableOuterTiltCheck", out var eot) ? bool.Parse(eot) : (d.TryGetValue("EnableOuterTiltCheck", out eot) ? bool.Parse(eot) : defM.EnableOuterTiltCheck);
+                        enableHoleCheck = d.TryGetValue(pfx + "EnableHoleCheck", out var ehc) ? bool.Parse(ehc) : (d.TryGetValue("EnableHoleCheck", out ehc) ? bool.Parse(ehc) : defM.EnableHoleCheck);
+                    }
+
+                    m.EnableJigCheck = enableJigCheck;
+                    m.EnableOuterTiltCheck = enableOuterTiltCheck;
+                    m.EnableHoleCheck = enableHoleCheck;
+
+                    int GetCamI(string key, int defVal) => d.ContainsKey(pfx + key) ? GetI(pfx + key, defVal) : GetI(key, defVal);
+                    double GetCamD(string key, double defVal) => d.ContainsKey(pfx + key) ? GetD(pfx + key, defVal) : GetD(key, defVal);
+
+                    m.TiltLeftRoi = new CvRect(GetCamI("TiltLX", defM.TiltLeftRoi.X), GetCamI("TiltLY", defM.TiltLeftRoi.Y), GetCamI("TiltLW", defM.TiltLeftRoi.Width), GetCamI("TiltLH", defM.TiltLeftRoi.Height));
+                    m.TiltRightRoi = new CvRect(GetCamI("TiltRX", defM.TiltRightRoi.X), GetCamI("TiltRY", defM.TiltRightRoi.Y), GetCamI("TiltRW", defM.TiltRightRoi.Width), GetCamI("TiltRH", defM.TiltRightRoi.Height));
+                    m.ThreshOuterL = GetCamI("ThreshOuterL", defM.ThreshOuterL); m.ThreshOuterR = GetCamI("ThreshOuterR", defM.ThreshOuterR);
+
+                    m.ThreshBtmInnerL = GetCamI("ThreshBtmInnerL", defM.ThreshBtmInnerL); m.ThreshBtmInnerR = GetCamI("ThreshBtmInnerR", defM.ThreshBtmInnerR);
+
+                    m.TargetOuterXOffsetMm = GetCamD("TargetOuterXOffsetMm", defM.TargetOuterXOffsetMm); m.OuterOffsetToleranceMm = GetCamD("OuterOffsetToleranceMm", defM.OuterOffsetToleranceMm);
+                    m.TargetOuterAngleDeg = GetCamD("TargetOuterAngleDeg", defM.TargetOuterAngleDeg); m.OuterAngleToleranceDeg = GetCamD("OuterAngleToleranceDeg", defM.OuterAngleToleranceDeg);
+
+                    m.BtmMeasureRoi = new CvRect(GetCamI("BtmRoiX", defM.BtmMeasureRoi.X), GetCamI("BtmRoiY", defM.BtmMeasureRoi.Y), GetCamI("BtmRoiW", defM.BtmMeasureRoi.Width), GetCamI("BtmRoiH", defM.BtmMeasureRoi.Height));
+                    m.BtmInnerLeftRoi = new CvRect(GetCamI("BtmInnerLX", defM.BtmInnerLeftRoi.X), GetCamI("BtmInnerLY", defM.BtmInnerLeftRoi.Y), GetCamI("BtmInnerLW", defM.BtmInnerLeftRoi.Width), GetCamI("BtmInnerLH", defM.BtmInnerLeftRoi.Height));
+                    m.BtmInnerRightRoi = new CvRect(GetCamI("BtmInnerRX", defM.BtmInnerRightRoi.X), GetCamI("BtmInnerRY", defM.BtmInnerRightRoi.Y), GetCamI("BtmInnerRW", defM.BtmInnerRightRoi.Width), GetCamI("BtmInnerRH", defM.BtmInnerRightRoi.Height));
+
+                    m.HolesRoi = new CvRect(GetCamI("HolesX", defM.HolesRoi.X), GetCamI("HolesY", defM.HolesRoi.Y), GetCamI("HolesW", defM.HolesRoi.Width), GetCamI("HolesH", defM.HolesRoi.Height));
+                    m.MinHoleArea = GetCamI("MinHoleArea", defM.MinHoleArea); m.MaxHoleArea = GetCamI("MaxHoleArea", defM.MaxHoleArea); m.MinCircularity = GetCamD("MinCirc", defM.MinCircularity);
+                    m.SplitBoundaryX = GetCamI("SplitBoundaryX", defM.SplitBoundaryX); m.SplitBoundaryY = GetCamI("SplitBoundaryY", defM.SplitBoundaryY);
+
+                    int oldEdge = GetCamI("EdgeThresh", defM.ThreshTopLeft); int oldHole = GetCamI("HoleThresh", defM.ThreshBtmLeft);
+                    m.ThreshTopLeft = GetCamI("ThreshTL", oldEdge); m.ThreshTopRight = GetCamI("ThreshTR", oldEdge);
+                    m.ThreshBtmLeft = GetCamI("ThreshBL", oldHole); m.ThreshBtmRight = GetCamI("ThreshBR", oldHole);
+
+                    m.JigLeftRoi = new CvRect(GetCamI("JigLX", defM.JigLeftRoi.X), GetCamI("JigLY", defM.JigLeftRoi.Y), GetCamI("JigLW", defM.JigLeftRoi.Width), GetCamI("JigLH", defM.JigLeftRoi.Height));
+                    m.JigRightRoi = new CvRect(GetCamI("JigRX", defM.JigRightRoi.X), GetCamI("JigRY", defM.JigRightRoi.Y), GetCamI("JigRW", defM.JigRightRoi.Width), GetCamI("JigRH", defM.JigRightRoi.Height));
+
+                    m.TargetJigDistanceMm = GetCamD("JigTargetMm", defM.TargetJigDistanceMm); m.JigToleranceMm = GetCamD("JigTolMm", defM.JigToleranceMm);
+                    m.PixelToMmRatio = GetCamD("PixelToMmRatio", defM.PixelToMmRatio);
+                    m.TargetXOffsetMm = GetCamD("TargetXOffsetMm", defM.TargetXOffsetMm); m.OffsetToleranceMm = GetCamD("OffsetToleranceMm", defM.OffsetToleranceMm);
+                    m.TargetAngleDeg = GetCamD("TargetAngleDeg", defM.TargetAngleDeg); m.AngleToleranceDeg = GetCamD("AngleToleranceDeg", defM.AngleToleranceDeg);
                 }
 
                 _triggerOnBright = d.TryGetValue("TriggerOnBright", out var tb) ? bool.Parse(tb) : true;
@@ -929,10 +1094,6 @@ namespace _20260224SolderInspec
                 _saveRoi = new CvRect(GetI("SaveRoiX", _saveRoi.X), GetI("SaveRoiY", _saveRoi.Y), GetI("SaveRoiW", _saveRoi.Width), GetI("SaveRoiH", _saveRoi.Height));
                 _logKeepDays = GetI("LogKeepDays", _logKeepDays);
 
-                if (_chkEnableJigCheck != null) _chkEnableJigCheck.Checked = enableJigCheck;
-                if (_chkEnableOuterTiltCheck != null) _chkEnableOuterTiltCheck.Checked = enableOuterTiltCheck;
-                if (_chkEnableHoleCheck != null) _chkEnableHoleCheck.Checked = enableHoleCheck;
-
                 _cmbTriggerMode.SelectedIndex = _triggerOnBright ? 0 : 1; _cmbSaveMode.SelectedIndex = _saveMode;
                 _nudTriggerThreshold.Value = (decimal)_triggerThreshold; _nudStabilityDuration.Value = _stabilityDurationMs;
                 _nudPlcDelayMs.Value = _plcDelayMs; _nudRetryCount.Value = _maxRetryCount; _nudRetryDelayMs.Value = _retryDelayMs;
@@ -941,38 +1102,7 @@ namespace _20260224SolderInspec
                 _nudSaveRoiX.Value = _saveRoi.X; _nudSaveRoiY.Value = _saveRoi.Y; _nudSaveRoiW.Value = _saveRoi.Width; _nudSaveRoiH.Value = _saveRoi.Height;
                 _nudLogKeepDays.Value = _logKeepDays;
 
-                _nudTiltLX.Value = GetI("TiltLX", defM.TiltLeftRoi.X); _nudTiltLY.Value = GetI("TiltLY", defM.TiltLeftRoi.Y); _nudTiltLW.Value = GetI("TiltLW", defM.TiltLeftRoi.Width); _nudTiltLH.Value = GetI("TiltLH", defM.TiltLeftRoi.Height);
-                _nudTiltRX.Value = GetI("TiltRX", defM.TiltRightRoi.X); _nudTiltRY.Value = GetI("TiltRY", defM.TiltRightRoi.Y); _nudTiltRW.Value = GetI("TiltRW", defM.TiltRightRoi.Width); _nudTiltRH.Value = GetI("TiltRH", defM.TiltRightRoi.Height);
-                _nudThreshOuterL.Value = GetI("ThreshOuterL", defM.ThreshOuterL); _nudThreshOuterR.Value = GetI("ThreshOuterR", defM.ThreshOuterR);
-
-                _nudThreshBtmInnerL.Value = GetI("ThreshBtmInnerL", defM.ThreshBtmInnerL); _nudThreshBtmInnerR.Value = GetI("ThreshBtmInnerR", defM.ThreshBtmInnerR);
-
-                _nudOuterTargetX.Value = (decimal)GetD("TargetOuterXOffsetMm", defM.TargetOuterXOffsetMm); _nudOuterOffsetX.Value = (decimal)GetD("OuterOffsetToleranceMm", defM.OuterOffsetToleranceMm);
-                _nudOuterTargetA.Value = (decimal)GetD("TargetOuterAngleDeg", defM.TargetOuterAngleDeg); _nudOuterOffsetA.Value = (decimal)GetD("OuterAngleToleranceDeg", defM.OuterAngleToleranceDeg);
-
-                _nudBtmRoiX.Value = GetI("BtmRoiX", defM.BtmMeasureRoi.X); _nudBtmRoiY.Value = GetI("BtmRoiY", defM.BtmMeasureRoi.Y); _nudBtmRoiW.Value = GetI("BtmRoiW", defM.BtmMeasureRoi.Width); _nudBtmRoiH.Value = GetI("BtmRoiH", defM.BtmMeasureRoi.Height);
-                _nudBtmInnerLX.Value = GetI("BtmInnerLX", defM.BtmInnerLeftRoi.X); _nudBtmInnerLY.Value = GetI("BtmInnerLY", defM.BtmInnerLeftRoi.Y); _nudBtmInnerLW.Value = GetI("BtmInnerLW", defM.BtmInnerLeftRoi.Width); _nudBtmInnerLH.Value = GetI("BtmInnerLH", defM.BtmInnerLeftRoi.Height);
-                _nudBtmInnerRX.Value = GetI("BtmInnerRX", defM.BtmInnerRightRoi.X); _nudBtmInnerRY.Value = GetI("BtmInnerRY", defM.BtmInnerRightRoi.Y); _nudBtmInnerRW.Value = GetI("BtmInnerRW", defM.BtmInnerRightRoi.Width); _nudBtmInnerRH.Value = GetI("BtmInnerRH", defM.BtmInnerRightRoi.Height);
-
-                _nudHolesX.Value = GetI("HolesX", defM.HolesRoi.X); _nudHolesY.Value = GetI("HolesY", defM.HolesRoi.Y); _nudHolesW.Value = GetI("HolesW", defM.HolesRoi.Width); _nudHolesH.Value = GetI("HolesH", defM.HolesRoi.Height);
-                _nudMinHoleArea.Value = GetI("MinHoleArea", defM.MinHoleArea); _nudMaxHoleArea.Value = GetI("MaxHoleArea", defM.MaxHoleArea); _nudMinCircularity.Value = (decimal)GetD("MinCirc", defM.MinCircularity);
-                _nudSplitX.Value = GetI("SplitBoundaryX", defM.SplitBoundaryX); _nudSplitY.Value = GetI("SplitBoundaryY", defM.SplitBoundaryY);
-                int oldEdge = GetI("EdgeThresh", defM.ThreshTopLeft); int oldHole = GetI("HoleThresh", defM.ThreshBtmLeft);
-                _nudThreshTL.Value = GetI("ThreshTL", oldEdge); _nudThreshTR.Value = GetI("ThreshTR", oldEdge);
-                _nudThreshBL.Value = GetI("ThreshBL", oldHole); _nudThreshBR.Value = GetI("ThreshBR", oldHole);
-
-                _nudJigLX.Value = GetI("JigLX", defM.JigLeftRoi.X); _nudJigLY.Value = GetI("JigLY", defM.JigLeftRoi.Y); _nudJigLW.Value = GetI("JigLW", defM.JigLeftRoi.Width); _nudJigLH.Value = GetI("JigLH", defM.JigLeftRoi.Height);
-                _nudJigRX.Value = GetI("JigRX", defM.JigRightRoi.X); _nudJigRY.Value = GetI("JigRY", defM.JigRightRoi.Y); _nudJigRW.Value = GetI("JigRW", defM.JigRightRoi.Width); _nudJigRH.Value = GetI("JigRH", defM.JigRightRoi.Height);
-
-                _nudJigTarget.Value = (decimal)GetD("JigTargetMm", defM.TargetJigDistanceMm); _nudJigTolerance.Value = (decimal)GetD("JigTolMm", defM.JigToleranceMm);
-                _nudPixelToMm.Value = (decimal)GetD("PixelToMmRatio", defM.PixelToMmRatio);
-                _nudTargetXOffset.Value = (decimal)GetD("TargetXOffsetMm", defM.TargetXOffsetMm); _nudOffsetTolerance.Value = (decimal)GetD("OffsetToleranceMm", defM.OffsetToleranceMm);
-                _nudTargetAngle.Value = (decimal)GetD("TargetAngleDeg", defM.TargetAngleDeg); _nudAngleTolerance.Value = (decimal)GetD("AngleToleranceDeg", defM.AngleToleranceDeg);
-
-                foreach (var m in _measurements)
-                {
-                    CopySettingsToMeasurement(m);
-                }
+                LoadSettingsToUI();
             }
             catch { }
             finally { _isLoadingConfig = false; }
@@ -982,12 +1112,8 @@ namespace _20260224SolderInspec
         {
             try
             {
-                var m = _measurements[0];
                 using (var sw = new StreamWriter(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt")))
                 {
-                    sw.WriteLine("EnableJigCheck=" + m.EnableJigCheck);
-                    sw.WriteLine("EnableOuterTiltCheck=" + m.EnableOuterTiltCheck);
-                    sw.WriteLine("EnableHoleCheck=" + m.EnableHoleCheck);
 
                     sw.WriteLine("TriggerOnBright=" + _triggerOnBright); sw.WriteLine("TriggerThreshold=" + _triggerThreshold);
                     sw.WriteLine("StabilityDurationMs=" + _stabilityDurationMs);
@@ -997,33 +1123,43 @@ namespace _20260224SolderInspec
                     sw.WriteLine("SaveRoiX=" + _saveRoi.X); sw.WriteLine("SaveRoiY=" + _saveRoi.Y); sw.WriteLine("SaveRoiW=" + _saveRoi.Width); sw.WriteLine("SaveRoiH=" + _saveRoi.Height);
                     sw.WriteLine("LogKeepDays=" + _logKeepDays);
 
-                    sw.WriteLine("TiltLX=" + m.TiltLeftRoi.X); sw.WriteLine("TiltLY=" + m.TiltLeftRoi.Y); sw.WriteLine("TiltLW=" + m.TiltLeftRoi.Width); sw.WriteLine("TiltLH=" + m.TiltLeftRoi.Height);
-                    sw.WriteLine("TiltRX=" + m.TiltRightRoi.X); sw.WriteLine("TiltRY=" + m.TiltRightRoi.Y); sw.WriteLine("TiltRW=" + m.TiltRightRoi.Width); sw.WriteLine("TiltRH=" + m.TiltRightRoi.Height);
-                    sw.WriteLine("ThreshOuterL=" + m.ThreshOuterL); sw.WriteLine("ThreshOuterR=" + m.ThreshOuterR);
+                    for (int c = 0; c < 2; c++)
+                    {
+                        var m = _measurements[c];
+                        string pfx = $"Cam{c}_";
 
-                    sw.WriteLine("ThreshBtmInnerL=" + m.ThreshBtmInnerL); sw.WriteLine("ThreshBtmInnerR=" + m.ThreshBtmInnerR);
+                        sw.WriteLine(pfx + "EnableJigCheck=" + m.EnableJigCheck);
+                        sw.WriteLine(pfx + "EnableOuterTiltCheck=" + m.EnableOuterTiltCheck);
+                        sw.WriteLine(pfx + "EnableHoleCheck=" + m.EnableHoleCheck);
 
-                    sw.WriteLine("TargetOuterXOffsetMm=" + m.TargetOuterXOffsetMm); sw.WriteLine("OuterOffsetToleranceMm=" + m.OuterOffsetToleranceMm);
-                    sw.WriteLine("TargetOuterAngleDeg=" + m.TargetOuterAngleDeg); sw.WriteLine("OuterAngleToleranceDeg=" + m.OuterAngleToleranceDeg);
+                        sw.WriteLine(pfx + "TiltLX=" + m.TiltLeftRoi.X); sw.WriteLine(pfx + "TiltLY=" + m.TiltLeftRoi.Y); sw.WriteLine(pfx + "TiltLW=" + m.TiltLeftRoi.Width); sw.WriteLine(pfx + "TiltLH=" + m.TiltLeftRoi.Height);
+                        sw.WriteLine(pfx + "TiltRX=" + m.TiltRightRoi.X); sw.WriteLine(pfx + "TiltRY=" + m.TiltRightRoi.Y); sw.WriteLine(pfx + "TiltRW=" + m.TiltRightRoi.Width); sw.WriteLine(pfx + "TiltRH=" + m.TiltRightRoi.Height);
+                        sw.WriteLine(pfx + "ThreshOuterL=" + m.ThreshOuterL); sw.WriteLine(pfx + "ThreshOuterR=" + m.ThreshOuterR);
 
-                    sw.WriteLine("BtmRoiX=" + m.BtmMeasureRoi.X); sw.WriteLine("BtmRoiY=" + m.BtmMeasureRoi.Y); sw.WriteLine("BtmRoiW=" + m.BtmMeasureRoi.Width); sw.WriteLine("BtmRoiH=" + m.BtmMeasureRoi.Height);
-                    sw.WriteLine("BtmInnerLX=" + m.BtmInnerLeftRoi.X); sw.WriteLine("BtmInnerLY=" + m.BtmInnerLeftRoi.Y); sw.WriteLine("BtmInnerLW=" + m.BtmInnerLeftRoi.Width); sw.WriteLine("BtmInnerLH=" + m.BtmInnerLeftRoi.Height);
-                    sw.WriteLine("BtmInnerRX=" + m.BtmInnerRightRoi.X); sw.WriteLine("BtmInnerRY=" + m.BtmInnerRightRoi.Y); sw.WriteLine("BtmInnerRW=" + m.BtmInnerRightRoi.Width); sw.WriteLine("BtmInnerRH=" + m.BtmInnerRightRoi.Height);
+                        sw.WriteLine(pfx + "ThreshBtmInnerL=" + m.ThreshBtmInnerL); sw.WriteLine(pfx + "ThreshBtmInnerR=" + m.ThreshBtmInnerR);
 
-                    sw.WriteLine("HolesX=" + m.HolesRoi.X); sw.WriteLine("HolesY=" + m.HolesRoi.Y); sw.WriteLine("HolesW=" + m.HolesRoi.Width); sw.WriteLine("HolesH=" + m.HolesRoi.Height);
-                    sw.WriteLine("MinHoleArea=" + m.MinHoleArea); sw.WriteLine("MaxHoleArea=" + m.MaxHoleArea);
-                    sw.WriteLine("MinCirc=" + m.MinCircularity);
-                    sw.WriteLine("SplitBoundaryX=" + m.SplitBoundaryX); sw.WriteLine("SplitBoundaryY=" + m.SplitBoundaryY);
-                    sw.WriteLine("ThreshTL=" + m.ThreshTopLeft); sw.WriteLine("ThreshTR=" + m.ThreshTopRight);
-                    sw.WriteLine("ThreshBL=" + m.ThreshBtmLeft); sw.WriteLine("ThreshBR=" + m.ThreshBtmRight);
+                        sw.WriteLine(pfx + "TargetOuterXOffsetMm=" + m.TargetOuterXOffsetMm); sw.WriteLine(pfx + "OuterOffsetToleranceMm=" + m.OuterOffsetToleranceMm);
+                        sw.WriteLine(pfx + "TargetOuterAngleDeg=" + m.TargetOuterAngleDeg); sw.WriteLine(pfx + "OuterAngleToleranceDeg=" + m.OuterAngleToleranceDeg);
 
-                    sw.WriteLine("JigLX=" + m.JigLeftRoi.X); sw.WriteLine("JigLY=" + m.JigLeftRoi.Y); sw.WriteLine("JigLW=" + m.JigLeftRoi.Width); sw.WriteLine("JigLH=" + m.JigLeftRoi.Height);
-                    sw.WriteLine("JigRX=" + m.JigRightRoi.X); sw.WriteLine("JigRY=" + m.JigRightRoi.Y); sw.WriteLine("JigRW=" + m.JigRightRoi.Width); sw.WriteLine("JigRH=" + m.JigRightRoi.Height);
+                        sw.WriteLine(pfx + "BtmRoiX=" + m.BtmMeasureRoi.X); sw.WriteLine(pfx + "BtmRoiY=" + m.BtmMeasureRoi.Y); sw.WriteLine(pfx + "BtmRoiW=" + m.BtmMeasureRoi.Width); sw.WriteLine(pfx + "BtmRoiH=" + m.BtmMeasureRoi.Height);
+                        sw.WriteLine(pfx + "BtmInnerLX=" + m.BtmInnerLeftRoi.X); sw.WriteLine(pfx + "BtmInnerLY=" + m.BtmInnerLeftRoi.Y); sw.WriteLine(pfx + "BtmInnerLW=" + m.BtmInnerLeftRoi.Width); sw.WriteLine(pfx + "BtmInnerLH=" + m.BtmInnerLeftRoi.Height);
+                        sw.WriteLine(pfx + "BtmInnerRX=" + m.BtmInnerRightRoi.X); sw.WriteLine(pfx + "BtmInnerRY=" + m.BtmInnerRightRoi.Y); sw.WriteLine(pfx + "BtmInnerRW=" + m.BtmInnerRightRoi.Width); sw.WriteLine(pfx + "BtmInnerRH=" + m.BtmInnerRightRoi.Height);
 
-                    sw.WriteLine("JigTargetMm=" + m.TargetJigDistanceMm); sw.WriteLine("JigTolMm=" + m.JigToleranceMm);
-                    sw.WriteLine("PixelToMmRatio=" + m.PixelToMmRatio);
-                    sw.WriteLine("TargetXOffsetMm=" + m.TargetXOffsetMm); sw.WriteLine("OffsetToleranceMm=" + m.OffsetToleranceMm);
-                    sw.WriteLine("TargetAngleDeg=" + m.TargetAngleDeg); sw.WriteLine("AngleToleranceDeg=" + m.AngleToleranceDeg);
+                        sw.WriteLine(pfx + "HolesX=" + m.HolesRoi.X); sw.WriteLine(pfx + "HolesY=" + m.HolesRoi.Y); sw.WriteLine(pfx + "HolesW=" + m.HolesRoi.Width); sw.WriteLine(pfx + "HolesH=" + m.HolesRoi.Height);
+                        sw.WriteLine(pfx + "MinHoleArea=" + m.MinHoleArea); sw.WriteLine(pfx + "MaxHoleArea=" + m.MaxHoleArea);
+                        sw.WriteLine(pfx + "MinCirc=" + m.MinCircularity);
+                        sw.WriteLine(pfx + "SplitBoundaryX=" + m.SplitBoundaryX); sw.WriteLine(pfx + "SplitBoundaryY=" + m.SplitBoundaryY);
+                        sw.WriteLine(pfx + "ThreshTL=" + m.ThreshTopLeft); sw.WriteLine(pfx + "ThreshTR=" + m.ThreshTopRight);
+                        sw.WriteLine(pfx + "ThreshBL=" + m.ThreshBtmLeft); sw.WriteLine(pfx + "ThreshBR=" + m.ThreshBtmRight);
+
+                        sw.WriteLine(pfx + "JigLX=" + m.JigLeftRoi.X); sw.WriteLine(pfx + "JigLY=" + m.JigLeftRoi.Y); sw.WriteLine(pfx + "JigLW=" + m.JigLeftRoi.Width); sw.WriteLine(pfx + "JigLH=" + m.JigLeftRoi.Height);
+                        sw.WriteLine(pfx + "JigRX=" + m.JigRightRoi.X); sw.WriteLine(pfx + "JigRY=" + m.JigRightRoi.Y); sw.WriteLine(pfx + "JigRW=" + m.JigRightRoi.Width); sw.WriteLine(pfx + "JigRH=" + m.JigRightRoi.Height);
+
+                        sw.WriteLine(pfx + "JigTargetMm=" + m.TargetJigDistanceMm); sw.WriteLine(pfx + "JigTolMm=" + m.JigToleranceMm);
+                        sw.WriteLine(pfx + "PixelToMmRatio=" + m.PixelToMmRatio);
+                        sw.WriteLine(pfx + "TargetXOffsetMm=" + m.TargetXOffsetMm); sw.WriteLine(pfx + "OffsetToleranceMm=" + m.OffsetToleranceMm);
+                        sw.WriteLine(pfx + "TargetAngleDeg=" + m.TargetAngleDeg); sw.WriteLine(pfx + "AngleToleranceDeg=" + m.AngleToleranceDeg);
+                    }
                 }
             }
             catch (Exception ex) { MessageBox.Show("設定ファイルの保存に失敗しました。\n\n" + ex.Message, "保存エラー", MessageBoxButtons.OK, MessageBoxIcon.Error); }
