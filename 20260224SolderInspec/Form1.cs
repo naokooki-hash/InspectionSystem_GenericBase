@@ -21,17 +21,22 @@ namespace _20260224SolderInspec
         private const int STATE_STABILIZING = 1;
         private const int STATE_COOLING = 2;
 
-        private TeliCamera _camera;
-        private MeasurementCore _measurement;
+        private TeliCamera[] _cameras = new TeliCamera[2];
+        private MeasurementCore[] _measurements = new MeasurementCore[2];
         private PlcCommunicator _plc;
         private AppSettings _appSettings;
         private ProductionAnalyzer _analyzer = new ProductionAnalyzer();
 
-        private PictureBox _pictureBox, _pictureBoxDebug;
+        private PictureBox[] _pictureBoxes = new PictureBox[2];
+        private PictureBox _pictureBoxDebug;
         private TabControl _tabControl;
         private TextBox _txtLog;
 
-        private Label _lblStatus, _lblBrightness, _lblFps, _lblBigResult, _lblTotal, _lblOk, _lblNg, _lblCurrentHoleDistPx;
+        private Label[] _lblStatuses = new Label[2];
+        private Label[] _lblBrightnesses = new Label[2];
+        private Label[] _lblFpsList = new Label[2];
+        private Label[] _lblBigResults = new Label[2];
+        private Label _lblTotal, _lblOk, _lblNg, _lblCurrentHoleDistPx;
 
         private CheckBox _chkShowOverlay, _chkEnableJigCheck;
         private CheckBox _chkEnableOuterTiltCheck, _chkEnableHoleCheck;
@@ -40,8 +45,8 @@ namespace _20260224SolderInspec
 
         private Button _btnRunToggle;
         private bool _isRunning = false;
-        private bool _requestErrorTest = false;
-        private bool _requestOkTest = false; // ★テスト用: 強制OKフラグ
+        private bool[] _requestErrorTests = new bool[2];
+        private bool[] _requestOkTests = new bool[2]; // ★テスト用: 強制OKフラグ
 
         private NumericUpDown _nudTriggerThreshold, _nudStabilityDuration, _nudResetThreshold;
         private NumericUpDown _nudRoiX, _nudRoiY, _nudRoiW, _nudRoiH;
@@ -53,7 +58,7 @@ namespace _20260224SolderInspec
         private NumericUpDown _nudAutoStartCount;
         private int _autoStartCount = 3;
         private int _missedTriggerCount = 0;
-        private bool _wasTriggeredLastFrame = false;
+        private bool[] _wasTriggeredLastFrames = new bool[2];
 
         private NumericUpDown _nudBtmRoiX, _nudBtmRoiY, _nudBtmRoiW, _nudBtmRoiH;
 
@@ -91,38 +96,48 @@ namespace _20260224SolderInspec
 
         private Button _btnCalcRatio;
 
-        private int _currentState = STATE_WAITING;
-        private DateTime _stabilityStartTime, _cooldownStartTime;
+        private int[] _currentStates = new int[] { STATE_WAITING, STATE_WAITING };
+        private DateTime[] _stabilityStartTimes = new DateTime[2];
+        private DateTime[] _cooldownStartTimes = new DateTime[2];
         private int _cooldownDurationMs = 500;
 
         private CvRect _roi = new CvRect(300, 200, 100, 100);
         private CvRect _saveRoi = new CvRect(100, 50, 440, 380);
 
-        private bool _requestManualTest = false, _isProcessing = false, _isLoadingConfig = false, _isUiLoaded = false;
-        private bool _isMonitoring = false, _plcTriggerReceived = false;
+        private bool[] _requestManualTests = new bool[2];
+        private bool _isLoadingConfig = false, _isUiLoaded = false;
+        private bool[] _isProcessing = new bool[2];
+        private bool _isMonitoring = false;
+        private bool[] _plcTriggerReceived = new bool[2];
 
-        private int _totalCount = 0, _okCount = 0, _ngCount = 0, _saveMode = 0, _stabilityDurationMs = 300, _pendingSaveResult = -1;
+        private int _totalCount = 0, _okCount = 0, _ngCount = 0, _saveMode = 0, _stabilityDurationMs = 300;
+        private int[] _pendingSaveResults = new int[] { -1, -1 };
         private bool _triggerOnBright = true;
         private double _triggerThreshold = 100.0, _resetThreshold = 50.0;
         private string _logDirPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
 
-        private DateTime _lastUiUpdateTime = DateTime.MinValue;
-        private DateTime _lastFrameProcessTime = DateTime.MinValue;
+        private DateTime[] _lastUiUpdateTimes = new DateTime[] { DateTime.MinValue, DateTime.MinValue };
+        private DateTime[] _lastFrameProcessTimes = new DateTime[] { DateTime.MinValue, DateTime.MinValue };
         private bool _isDebugTabActive = false;
 
-        private int _camFrameCount = 0, _procFrameCount = 0, _uiFrameCount = 0;
+        private int[] _camFrameCounts = new int[2];
+        private int[] _procFrameCounts = new int[2];
+        private int[] _uiFrameCounts = new int[2];
         private DateTime _lastFpsTime = DateTime.Now;
-        private string _currentFpsText = "FPS: --";
+        private string[] _currentFpsTexts = new string[] { "Cam1 FPS: --", "Cam2 FPS: --" };
 
         public Form1()
         {
             _appSettings = AppSettings.Load();
-            _camera = new TeliCamera();
-            _measurement = new MeasurementCore();
+            _cameras[0] = new TeliCamera();
+            _cameras[1] = new TeliCamera();
+            _measurements[0] = new MeasurementCore();
+            _measurements[1] = new MeasurementCore();
             _plc = new PlcCommunicator(_appSettings);
 
             InitializeCustomUI();
-            _camera.OnFrameCaptured += Camera_OnFrameCaptured;
+            _cameras[0].OnFrameCaptured += (s, e) => Camera_OnFrameCaptured(s, e, 0);
+            _cameras[1].OnFrameCaptured += (s, e) => Camera_OnFrameCaptured(s, e, 1);
 
             _plc.OnLog += (msg, isErr) => AppendLog(msg, isErr);
 
@@ -137,11 +152,20 @@ namespace _20260224SolderInspec
         private void InitializeCustomUI()
         {
             this.Text = "Punching Metal Auto Inspection System (Bulletproof Dual-Engine)";
-            this.Size = new Size(1280, 820);
+            this.Size = new Size(1920, 1000);
             this.StartPosition = FormStartPosition.CenterScreen;
 
-            _pictureBox = new PictureBox { Location = new Point(10, 10), Size = new Size(640, 480), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black, BorderStyle = BorderStyle.FixedSingle };
-            this.Controls.Add(_pictureBox);
+            for (int i = 0; i < 2; i++)
+            {
+                int px = 10 + (i * 650);
+                _pictureBoxes[i] = new PictureBox { Location = new Point(px, 10), Size = new Size(640, 480), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black, BorderStyle = BorderStyle.FixedSingle };
+                this.Controls.Add(_pictureBoxes[i]);
+
+                _lblStatuses[i] = new Label { Text = $"Cam{i+1} Status: STOPPED", Location = new Point(px, 500), AutoSize = true, Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold), ForeColor = Color.Red };
+                _lblBrightnesses[i] = new Label { Text = $"Cam{i+1} Brightness: 0.0", Location = new Point(px, 530), AutoSize = true, Font = new Font(this.Font.FontFamily, 12) };
+                _lblFpsList[i] = new Label { Text = $"Cam{i+1} FPS: --", Location = new Point(px + 180, 530), AutoSize = true, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold), ForeColor = Color.Blue };
+                this.Controls.Add(_lblStatuses[i]); this.Controls.Add(_lblBrightnesses[i]); this.Controls.Add(_lblFpsList[i]);
+            }
 
             _txtLog = new TextBox
             {
@@ -156,13 +180,8 @@ namespace _20260224SolderInspec
             };
             // _txtLog will be added to the Settings tab later instead of main Form
 
-            int px = 660;
-            _lblStatus = new Label { Text = "Status: STOPPED", Location = new Point(px, 10), AutoSize = true, Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold), ForeColor = Color.Red };
-            _lblBrightness = new Label { Text = "Brightness: 0.0", Location = new Point(px, 40), AutoSize = true, Font = new Font(this.Font.FontFamily, 12) };
-            _lblFps = new Label { Text = "FPS: --", Location = new Point(px + 180, 40), AutoSize = true, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold), ForeColor = Color.Blue };
-            this.Controls.Add(_lblStatus); this.Controls.Add(_lblBrightness); this.Controls.Add(_lblFps);
-
-            _tabControl = new TabControl { Location = new Point(px, 80), Size = new Size(580, 680), Font = new Font(this.Font.FontFamily, 10) };
+            int tabX = 1320;
+            _tabControl = new TabControl { Location = new Point(tabX, 10), Size = new Size(580, 750), Font = new Font(this.Font.FontFamily, 10) };
             _tabControl.SelectedIndexChanged += (s, e) => { _isDebugTabActive = (_tabControl.SelectedIndex == 3); };
             this.Controls.Add(_tabControl);
 
@@ -178,16 +197,27 @@ namespace _20260224SolderInspec
             _btnRunToggle = new Button { Text = "▶ 運転開始 (START)", Location = new Point(10, y), Size = new Size(540, 60), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 16, FontStyle.Bold) };
             _btnRunToggle.Click += (s, e) => {
                 _isRunning = !_isRunning; _missedTriggerCount = 0;
-                if (_isRunning) { _btnRunToggle.Text = "■ 運転停止 (STOP)"; _btnRunToggle.BackColor = Color.Salmon; _currentState = STATE_WAITING; SafeInvoke(() => lblStateUpdate("READY", Color.LightGray)); }
-                else { _btnRunToggle.Text = "▶ 運転開始 (START)"; _btnRunToggle.BackColor = Color.LightGreen; _currentState = STATE_WAITING; SafeInvoke(() => lblStateUpdate("STOPPED", Color.DarkGray)); }
+                if (_isRunning) {
+                    _btnRunToggle.Text = "■ 運転停止 (STOP)"; _btnRunToggle.BackColor = Color.Salmon;
+                    _currentStates[0] = STATE_WAITING; _currentStates[1] = STATE_WAITING;
+                    SafeInvoke(() => lblStateUpdate(0, "READY", Color.LightGray));
+                    SafeInvoke(() => lblStateUpdate(1, "READY", Color.LightGray));
+                }
+                else {
+                    _btnRunToggle.Text = "▶ 運転開始 (START)"; _btnRunToggle.BackColor = Color.LightGreen;
+                    _currentStates[0] = STATE_WAITING; _currentStates[1] = STATE_WAITING;
+                    SafeInvoke(() => lblStateUpdate(0, "STOPPED", Color.DarkGray));
+                    SafeInvoke(() => lblStateUpdate(1, "STOPPED", Color.DarkGray));
+                }
             };
             tab.Controls.Add(_btnRunToggle); y += 75;
 
             _chkShowOverlay = new CheckBox { Text = "計測パラメータを表示する", Location = new Point(10, y), AutoSize = true, Checked = true };
             tab.Controls.Add(_chkShowOverlay); y += 30;
 
-            _lblBigResult = new Label { Text = "STOPPED", Location = new Point(10, y), Size = new Size(540, 80), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 36, FontStyle.Bold), BackColor = Color.DarkGray };
-            tab.Controls.Add(_lblBigResult); y += 95;
+            _lblBigResults[0] = new Label { Text = "Cam1: STOPPED", Location = new Point(10, y), Size = new Size(260, 80), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 24, FontStyle.Bold), BackColor = Color.DarkGray };
+            _lblBigResults[1] = new Label { Text = "Cam2: STOPPED", Location = new Point(280, y), Size = new Size(260, 80), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 24, FontStyle.Bold), BackColor = Color.DarkGray };
+            tab.Controls.Add(_lblBigResults[0]); tab.Controls.Add(_lblBigResults[1]); y += 95;
 
             GroupBox gp = new GroupBox { Text = "生産カウンター", Location = new Point(10, y), Size = new Size(540, 110) };
             _lblTotal = new Label { Text = "総検査数 : 0", Location = new Point(20, 25), AutoSize = true };
@@ -217,7 +247,12 @@ namespace _20260224SolderInspec
             tab.Controls.Add(btnDashboard); y += 55;
 
             Button btnTest = new Button { Text = "手動検査テスト", Location = new Point(10, y), Size = new Size(540, 35), BackColor = Color.LightSkyBlue, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
-            btnTest.Click += (s, e) => { _requestManualTest = true; _requestOkTest = false; _requestErrorTest = false; }; tab.Controls.Add(btnTest); y += 40;
+            btnTest.Click += (s, e) => {
+                _requestManualTests[0] = true; _requestManualTests[1] = true;
+                _requestOkTests[0] = false; _requestOkTests[1] = false;
+                _requestErrorTests[0] = false; _requestErrorTests[1] = false;
+            };
+            tab.Controls.Add(btnTest); y += 40;
         }
 
         private void InitializeSettingsTab(TabPage tab)
@@ -279,10 +314,18 @@ namespace _20260224SolderInspec
             tab.Controls.Add(new Label { Text = "--- デバッグ / メンテナンス ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkOrange }); y += 22;
 
             Button btnTestOk = new Button { Text = "強制OKテスト", Location = new Point(10, y), Size = new Size(260, 35), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
-            btnTestOk.Click += (s, e) => { _requestOkTest = true; _requestErrorTest = false; }; tab.Controls.Add(btnTestOk);
+            btnTestOk.Click += (s, e) => {
+                _requestOkTests[0] = true; _requestOkTests[1] = true;
+                _requestErrorTests[0] = false; _requestErrorTests[1] = false;
+            };
+            tab.Controls.Add(btnTestOk);
 
             Button btnTestNg = new Button { Text = "強制NGテスト", Location = new Point(290, y), Size = new Size(260, 35), BackColor = Color.Orange, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
-            btnTestNg.Click += (s, e) => { _requestErrorTest = true; _requestOkTest = false; }; tab.Controls.Add(btnTestNg); y += 45;
+            btnTestNg.Click += (s, e) => {
+                _requestErrorTests[0] = true; _requestErrorTests[1] = true;
+                _requestOkTests[0] = false; _requestOkTests[1] = false;
+            };
+            tab.Controls.Add(btnTestNg); y += 45;
 
             if (_txtLog != null) {
                 _txtLog.Location = new Point(10, y);
@@ -398,13 +441,20 @@ namespace _20260224SolderInspec
         private void Form1_Load(object sender, EventArgs e)
         {
             _isUiLoaded = true;
-            if (_camera.Initialize()) _camera.StartCapture();
+            if (_cameras[0].Initialize(0)) _cameras[0].StartCapture();
+            if (_cameras[1].Initialize(1)) _cameras[1].StartCapture();
             _ = MonitorPlcTriggerAsync();
             Task.Run(() => DeleteOldLogs());
             RestoreDailyCounter();
         }
 
-        private void Form1_FormClosing(object sender, FormClosingEventArgs e) { _isMonitoring = false; _isUiLoaded = false; _camera.StopCapture(); _camera.Dispose(); _plc.Disconnect(); SaveConfig(); }
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            _isMonitoring = false; _isUiLoaded = false;
+            _cameras[0].StopCapture(); _cameras[0].Dispose();
+            _cameras[1].StopCapture(); _cameras[1].Dispose();
+            _plc.Disconnect(); SaveConfig();
+        }
 
         private void AppendDailyLog(int result, double brightness)
         {
@@ -449,20 +499,23 @@ namespace _20260224SolderInspec
                 {
                     if (_appSettings.TriggerMode == "Plc")
                     {
-                        int triggerValue = await Task.Run(() => _plc.ReadDevice(_appSettings.ReadDeviceAddress));
-                        if (triggerValue == 1)
+                        int t1 = await Task.Run(() => _plc.ReadDevice(_appSettings.Cam1.ReadDeviceAddress));
+                        if (t1 == 1)
                         {
-                            if (!_plcTriggerReceived)
-                            {
-                                AppendLog($"D{_appSettings.ReadDeviceAddress} より検査トリガを受信しました");
-                            }
-                            _plcTriggerReceived = true;
+                            if (!_plcTriggerReceived[0]) AppendLog($"Cam1: M{_appSettings.Cam1.ReadDeviceAddress} より検査トリガを受信しました");
+                            _plcTriggerReceived[0] = true;
+                        }
+
+                        int t2 = await Task.Run(() => _plc.ReadDevice(_appSettings.Cam2.ReadDeviceAddress));
+                        if (t2 == 1)
+                        {
+                            if (!_plcTriggerReceived[1]) AppendLog($"Cam2: M{_appSettings.Cam2.ReadDeviceAddress} より検査トリガを受信しました");
+                            _plcTriggerReceived[1] = true;
                         }
                     }
                 }
                 else
                 {
-                    // 未接続の場合は再接続を試みる前に少し待機
                     await Task.Delay(1000);
                 }
 
@@ -503,79 +556,99 @@ namespace _20260224SolderInspec
         private void SafeInvoke(Action action) { if (!_isUiLoaded || this.IsDisposed || !this.IsHandleCreated || this.Disposing) return; try { this.Invoke(new MethodInvoker(action)); } catch { } }
         private void SafeBeginInvoke(Action action) { if (!_isUiLoaded || this.IsDisposed || !this.IsHandleCreated || this.Disposing) return; try { this.BeginInvoke(new MethodInvoker(action)); } catch { } }
 
-        private void Camera_OnFrameCaptured(object sender, Mat frame)
+        private void Camera_OnFrameCaptured(object sender, Mat frame, int camIndex)
         {
             if (!_isUiLoaded || this.IsDisposed || frame == null || frame.Empty()) return;
 
-            _camFrameCount++;
-            if ((DateTime.Now - _lastFpsTime).TotalMilliseconds >= 1000) { _currentFpsText = $"FPS: Cam:{_camFrameCount} / Proc:{_procFrameCount} / UI:{_uiFrameCount}"; _camFrameCount = 0; _procFrameCount = 0; _uiFrameCount = 0; _lastFpsTime = DateTime.Now; }
+            _camFrameCounts[camIndex]++;
+            if ((DateTime.Now - _lastFpsTime).TotalMilliseconds >= 1000) {
+                _currentFpsTexts[0] = $"Cam1 FPS: Cam:{_camFrameCounts[0]} / Proc:{_procFrameCounts[0]} / UI:{_uiFrameCounts[0]}";
+                _currentFpsTexts[1] = $"Cam2 FPS: Cam:{_camFrameCounts[1]} / Proc:{_procFrameCounts[1]} / UI:{_uiFrameCounts[1]}";
+                _camFrameCounts[0] = 0; _procFrameCounts[0] = 0; _uiFrameCounts[0] = 0;
+                _camFrameCounts[1] = 0; _procFrameCounts[1] = 0; _uiFrameCounts[1] = 0;
+                _lastFpsTime = DateTime.Now;
+            }
 
             double limitMs = 33.0; if (!_isRunning && _autoStartCount == 0) limitMs = 200.0; else if (_appSettings.TriggerMode == "Plc" && !_isRunning) limitMs = 200.0;
 
-            bool hasForceAction = _plcTriggerReceived || _requestManualTest || _requestErrorTest || _requestOkTest || _pendingSaveResult != -1;
-            if (!hasForceAction && (DateTime.Now - _lastFrameProcessTime).TotalMilliseconds < limitMs) { frame.Dispose(); return; }
-            if (_isProcessing) { frame.Dispose(); return; }
-            _isProcessing = true; _lastFrameProcessTime = DateTime.Now;
+            bool hasForceAction = _plcTriggerReceived[camIndex] || _requestManualTests[camIndex] || _requestErrorTests[camIndex] || _requestOkTests[camIndex] || _pendingSaveResults[camIndex] != -1;
+            if (!hasForceAction && (DateTime.Now - _lastFrameProcessTimes[camIndex]).TotalMilliseconds < limitMs) { frame.Dispose(); return; }
+            if (_isProcessing[camIndex]) { frame.Dispose(); return; }
+            _isProcessing[camIndex] = true; _lastFrameProcessTimes[camIndex] = DateTime.Now;
 
             Task.Run(() => {
                 try
                 {
-                    _procFrameCount++; bool isDebug = _isDebugTabActive; double b = 0;
+                    _procFrameCounts[camIndex]++; bool isDebug = _isDebugTabActive && camIndex == 0; double b = 0;
                     if (_appSettings.TriggerMode == "Visual" || _isRunning || _autoStartCount > 0)
-                        b = _measurement.CalculateBrightness(frame, _roi);
+                        b = _measurements[camIndex].CalculateBrightness(frame, _roi);
 
-                    if (isDebug) _measurement.UpdateDebugImageRealtime(frame, _saveRoi);
+                    if (isDebug) _measurements[camIndex].UpdateDebugImageRealtime(frame, _saveRoi);
                     bool forceUiUpdate = false;
 
-                    if (_requestManualTest) { _requestManualTest = false; int manualResult = _measurement.Inspect(frame, _saveRoi, isDebug); SafeInvoke(() => UpdateResultDisplay(manualResult, true, b)); _pendingSaveResult = manualResult; forceUiUpdate = true; }
-                    // ★ テスト用: 強制OKテスト（不要になったら削除可能）
-                    if (_requestOkTest)
+                    if (_requestManualTests[camIndex]) {
+                        _requestManualTests[camIndex] = false;
+                        int manualResult = _measurements[camIndex].Inspect(frame, _saveRoi, isDebug);
+                        SafeInvoke(() => UpdateResultDisplay(camIndex, manualResult, true, b));
+                        _pendingSaveResults[camIndex] = manualResult; forceUiUpdate = true;
+                    }
+                    if (_requestOkTests[camIndex])
                     {
-                        _requestOkTest = false;
+                        _requestOkTests[camIndex] = false;
                         int forceOkResult = 1;
-                        AppendLog($"[TEST] 強制OKテスト要求を受信しました。判定結果(OK)を送信します");
-                        _plc.SendResult(true);
+                        AppendLog($"[TEST] Cam{camIndex+1} 強制OKテスト要求を受信。");
+                        var camSettings = camIndex == 0 ? _appSettings.Cam1 : _appSettings.Cam2;
+                        _plc.SendResult(true, camSettings.OkDeviceAddress, camSettings.NgDeviceAddress);
                         if (_appSettings.TriggerMode == "Plc")
                         {
-                            AppendLog($"[TEST] PLCのトリガアドレス M{_appSettings.ReadDeviceAddress} をクリア (0書き込み) します");
-                            Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+                            Task.Run(() => _plc.WriteDevice(camSettings.ReadDeviceAddress, 0));
                         }
-                        SafeInvoke(() => UpdateResultDisplay(forceOkResult, true, b));
-                        _pendingSaveResult = forceOkResult;
+                        SafeInvoke(() => UpdateResultDisplay(camIndex, forceOkResult, true, b));
+                        _pendingSaveResults[camIndex] = forceOkResult;
                         forceUiUpdate = true;
                     }
 
-                    if (_requestErrorTest)
+                    if (_requestErrorTests[camIndex])
                     {
-                        _requestErrorTest = false;
+                        _requestErrorTests[camIndex] = false;
                         int forceNgResult = 2;
-                        AppendLog($"[TEST] 強制NGテスト要求を受信しました。判定結果(NG)を送信します");
-                        _plc.SendResult(false);
+                        AppendLog($"[TEST] Cam{camIndex+1} 強制NGテスト要求を受信。");
+                        var camSettings = camIndex == 0 ? _appSettings.Cam1 : _appSettings.Cam2;
+                        _plc.SendResult(false, camSettings.OkDeviceAddress, camSettings.NgDeviceAddress);
                         if (_appSettings.TriggerMode == "Plc")
                         {
-                            AppendLog($"[TEST] PLCのトリガアドレス M{_appSettings.ReadDeviceAddress} をクリア (0書き込み) します");
-                            Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+                            Task.Run(() => _plc.WriteDevice(camSettings.ReadDeviceAddress, 0));
                         }
-                        SafeInvoke(() => UpdateResultDisplay(forceNgResult, true, b));
-                        _pendingSaveResult = forceNgResult;
+                        SafeInvoke(() => UpdateResultDisplay(camIndex, forceNgResult, true, b));
+                        _pendingSaveResults[camIndex] = forceNgResult;
                         forceUiUpdate = true;
                     }
 
-                    UpdateStateMachine(frame, b, isDebug);
-                    if (_pendingSaveResult != -1) forceUiUpdate = true;
+                    UpdateStateMachine(camIndex, frame, b, isDebug);
+                    if (_pendingSaveResults[camIndex] != -1) forceUiUpdate = true;
                     double uiLimitMs = _isRunning ? 66.0 : 200.0;
 
-                    if (forceUiUpdate || (DateTime.Now - _lastUiUpdateTime).TotalMilliseconds > uiLimitMs) { _lastUiUpdateTime = DateTime.Now; SafeBeginInvoke(() => { _uiFrameCount++; UpdateUIDisplay(frame, b, isDebug); frame.Dispose(); _isProcessing = false; }); } else { frame.Dispose(); _isProcessing = false; }
+                    if (forceUiUpdate || (DateTime.Now - _lastUiUpdateTimes[camIndex]).TotalMilliseconds > uiLimitMs) {
+                        _lastUiUpdateTimes[camIndex] = DateTime.Now;
+                        SafeBeginInvoke(() => {
+                            _uiFrameCounts[camIndex]++;
+                            UpdateUIDisplay(camIndex, frame, b, isDebug);
+                            frame.Dispose(); _isProcessing[camIndex] = false;
+                        });
+                    } else { frame.Dispose(); _isProcessing[camIndex] = false; }
                 }
-                catch { if (frame != null && !frame.IsDisposed) frame.Dispose(); _isProcessing = false; }
+                catch { if (frame != null && !frame.IsDisposed) frame.Dispose(); _isProcessing[camIndex] = false; }
             });
         }
 
-        private void UpdateStateMachine(Mat frame, double b, bool isDebug)
+        private void UpdateStateMachine(int camIndex, Mat frame, double b, bool isDebug)
         {
-            bool rawTriggered = (_appSettings.TriggerMode == "Plc" ? _plcTriggerReceived : (_triggerOnBright ? (b > _triggerThreshold) : (b < _triggerThreshold)));
+            bool rawTriggered = (_appSettings.TriggerMode == "Plc" ? _plcTriggerReceived[camIndex] : (_triggerOnBright ? (b > _triggerThreshold) : (b < _triggerThreshold)));
             bool isReset = (_appSettings.TriggerMode == "Plc" ? false : (_triggerOnBright ? (b < _resetThreshold) : (b > _resetThreshold)));
-            bool isTriggerEdge = rawTriggered && !_wasTriggeredLastFrame; _wasTriggeredLastFrame = rawTriggered;
+            bool isTriggerEdge = rawTriggered && !_wasTriggeredLastFrames[camIndex];
+            _wasTriggeredLastFrames[camIndex] = rawTriggered;
+
+            var camSettings = camIndex == 0 ? _appSettings.Cam1 : _appSettings.Cam2;
 
             if (!_isRunning)
             {
@@ -583,33 +656,52 @@ namespace _20260224SolderInspec
                 {
                     if (_autoStartCount > 0)
                     {
-                        _missedTriggerCount++;
+                        if (camIndex == 0) _missedTriggerCount++;
                         if (_missedTriggerCount >= _autoStartCount) { _isRunning = true; _missedTriggerCount = 0; SafeInvoke(() => { _btnRunToggle.Text = "■ 運転停止 (STOP)"; _btnRunToggle.BackColor = Color.Salmon; }); }
-                        else { SafeInvoke(() => lblStateUpdate($"STARTING SOON... ({_missedTriggerCount}/{_autoStartCount})", Color.Orange)); if (_appSettings.TriggerMode == "Plc") { _plcTriggerReceived = false; _plc.SendResult(true); Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0)); } return; }
+                        else {
+                            SafeInvoke(() => lblStateUpdate(camIndex, $"STARTING SOON... ({_missedTriggerCount}/{_autoStartCount})", Color.Orange));
+                            if (_appSettings.TriggerMode == "Plc") {
+                                _plcTriggerReceived[camIndex] = false;
+                                _plc.SendResult(true, camSettings.OkDeviceAddress, camSettings.NgDeviceAddress);
+                                Task.Run(() => _plc.WriteDevice(camSettings.ReadDeviceAddress, 0));
+                            }
+                            return;
+                        }
                     }
-                    else { if (_appSettings.TriggerMode == "Plc") { _plcTriggerReceived = false; _plc.SendResult(true); Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0)); } return; }
+                    else {
+                        if (_appSettings.TriggerMode == "Plc") {
+                            _plcTriggerReceived[camIndex] = false;
+                            _plc.SendResult(true, camSettings.OkDeviceAddress, camSettings.NgDeviceAddress);
+                            Task.Run(() => _plc.WriteDevice(camSettings.ReadDeviceAddress, 0));
+                        }
+                        return;
+                    }
                 }
                 else return;
             }
 
-            switch (_currentState)
+            switch (_currentStates[camIndex])
             {
                 case STATE_WAITING:
                     if (rawTriggered)
                     {
                         _currentRetry = 0;
-                        if (_chkEnableOuterTiltCheck != null) _measurement.EnableOuterTiltCheck = _chkEnableOuterTiltCheck.Checked;
-                        if (_chkEnableHoleCheck != null) _measurement.EnableHoleCheck = _chkEnableHoleCheck.Checked;
+                        if (_chkEnableOuterTiltCheck != null) _measurements[camIndex].EnableOuterTiltCheck = _chkEnableOuterTiltCheck.Checked;
+                        if (_chkEnableHoleCheck != null) _measurements[camIndex].EnableHoleCheck = _chkEnableHoleCheck.Checked;
 
-                        // 検査開始前に前回の良品/不良品出力をクリア
-                        AppendLog("検査開始のため前回の判定出力をクリアします。");
+                        AppendLog($"Cam{camIndex+1}: 検査開始のため前回の判定出力をクリア");
                         Task.Run(() => {
-                            _plc.WriteDevice(_appSettings.OkDeviceAddress, 0);
-                            _plc.WriteDevice(_appSettings.NgDeviceAddress, 0);
+                            _plc.WriteDevice(camSettings.OkDeviceAddress, 0);
+                            _plc.WriteDevice(camSettings.NgDeviceAddress, 0);
                         });
 
-                        if (_appSettings.TriggerMode == "Plc") { _plcTriggerReceived = false; _currentState = STATE_STABILIZING; _stabilityStartTime = DateTime.Now; SafeInvoke(() => lblStateUpdate("DELAYING...", Color.Yellow)); }
-                        else { if (isTriggerEdge) { _currentState = STATE_STABILIZING; _stabilityStartTime = DateTime.Now; SafeInvoke(() => lblStateUpdate("TESTING...", Color.Yellow)); } }
+                        if (_appSettings.TriggerMode == "Plc") {
+                            _plcTriggerReceived[camIndex] = false; _currentStates[camIndex] = STATE_STABILIZING; _stabilityStartTimes[camIndex] = DateTime.Now;
+                            SafeInvoke(() => lblStateUpdate(camIndex, "DELAYING...", Color.Yellow));
+                        }
+                        else {
+                            if (isTriggerEdge) { _currentStates[camIndex] = STATE_STABILIZING; _stabilityStartTimes[camIndex] = DateTime.Now; SafeInvoke(() => lblStateUpdate(camIndex, "TESTING...", Color.Yellow)); }
+                        }
                     }
                     break;
 
@@ -617,73 +709,80 @@ namespace _20260224SolderInspec
                     if (_appSettings.TriggerMode == "Plc")
                     {
                         double targetDelay = _currentRetry == 0 ? _plcDelayMs : _retryDelayMs;
-                        if ((DateTime.Now - _stabilityStartTime).TotalMilliseconds > targetDelay)
+                        if ((DateTime.Now - _stabilityStartTimes[camIndex]).TotalMilliseconds > targetDelay)
                         {
-                            int inspectResult = _measurement.Inspect(frame, _saveRoi, isDebug);
+                            int inspectResult = _measurements[camIndex].Inspect(frame, _saveRoi, isDebug);
 
-                            if (inspectResult != 1 && _currentRetry >= _maxRetryCount && _measurement.EnableOuterTiltCheck && !_measurement.EnableHoleCheck)
+                            if (inspectResult != 1 && _currentRetry >= _maxRetryCount && _measurements[camIndex].EnableOuterTiltCheck && !_measurements[camIndex].EnableHoleCheck)
                             {
-                                _measurement.EnableOuterTiltCheck = false; _measurement.EnableHoleCheck = true;
-                                inspectResult = _measurement.Inspect(frame, _saveRoi, isDebug);
-                                SafeInvoke(() => lblStateUpdate("FALLBACK HOLE...", Color.Orange));
+                                _measurements[camIndex].EnableOuterTiltCheck = false; _measurements[camIndex].EnableHoleCheck = true;
+                                inspectResult = _measurements[camIndex].Inspect(frame, _saveRoi, isDebug);
+                                SafeInvoke(() => lblStateUpdate(camIndex, "FALLBACK HOLE...", Color.Orange));
                             }
 
-                            if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(inspectResult, b); _currentState = STATE_COOLING; _cooldownStartTime = DateTime.Now; }
-                            else { _currentRetry++; _stabilityStartTime = DateTime.Now; SafeInvoke(() => lblStateUpdate($"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange)); }
+                            if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(camIndex, inspectResult, b); _currentStates[camIndex] = STATE_COOLING; _cooldownStartTimes[camIndex] = DateTime.Now; }
+                            else { _currentRetry++; _stabilityStartTimes[camIndex] = DateTime.Now; SafeInvoke(() => lblStateUpdate(camIndex, $"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange)); }
                         }
                     }
                     else
                     {
-                        if (isReset) { _currentState = STATE_WAITING; SafeInvoke(() => lblStateUpdate("READY", Color.LightGray)); }
+                        if (isReset) { _currentStates[camIndex] = STATE_WAITING; SafeInvoke(() => lblStateUpdate(camIndex, "READY", Color.LightGray)); }
                         else
                         {
                             double targetDelay = _currentRetry == 0 ? _stabilityDurationMs : _retryDelayMs;
-                            if ((DateTime.Now - _stabilityStartTime).TotalMilliseconds > targetDelay)
+                            if ((DateTime.Now - _stabilityStartTimes[camIndex]).TotalMilliseconds > targetDelay)
                             {
-                                int inspectResult = _measurement.Inspect(frame, _saveRoi, isDebug);
+                                int inspectResult = _measurements[camIndex].Inspect(frame, _saveRoi, isDebug);
 
-                                if (inspectResult != 1 && _currentRetry >= _maxRetryCount && _measurement.EnableOuterTiltCheck && !_measurement.EnableHoleCheck)
+                                if (inspectResult != 1 && _currentRetry >= _maxRetryCount && _measurements[camIndex].EnableOuterTiltCheck && !_measurements[camIndex].EnableHoleCheck)
                                 {
-                                    _measurement.EnableOuterTiltCheck = false; _measurement.EnableHoleCheck = true;
-                                    inspectResult = _measurement.Inspect(frame, _saveRoi, isDebug);
-                                    SafeInvoke(() => lblStateUpdate("FALLBACK HOLE...", Color.Orange));
+                                    _measurements[camIndex].EnableOuterTiltCheck = false; _measurements[camIndex].EnableHoleCheck = true;
+                                    inspectResult = _measurements[camIndex].Inspect(frame, _saveRoi, isDebug);
+                                    SafeInvoke(() => lblStateUpdate(camIndex, "FALLBACK HOLE...", Color.Orange));
                                 }
 
-                                if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(inspectResult, b); _currentState = STATE_COOLING; _cooldownStartTime = DateTime.Now; }
-                                else { _currentRetry++; _stabilityStartTime = DateTime.Now; SafeInvoke(() => lblStateUpdate($"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange)); }
+                                if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(camIndex, inspectResult, b); _currentStates[camIndex] = STATE_COOLING; _cooldownStartTimes[camIndex] = DateTime.Now; }
+                                else { _currentRetry++; _stabilityStartTimes[camIndex] = DateTime.Now; SafeInvoke(() => lblStateUpdate(camIndex, $"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange)); }
                             }
                         }
                     }
                     break;
 
                 case STATE_COOLING:
-                    if ((DateTime.Now - _cooldownStartTime).TotalMilliseconds > _cooldownDurationMs)
-                        if (_appSettings.TriggerMode == "Plc" || isReset) { _currentState = STATE_WAITING; SafeInvoke(() => lblStateUpdate("READY", Color.LightGray)); }
+                    if ((DateTime.Now - _cooldownStartTimes[camIndex]).TotalMilliseconds > _cooldownDurationMs)
+                        if (_appSettings.TriggerMode == "Plc" || isReset) { _currentStates[camIndex] = STATE_WAITING; SafeInvoke(() => lblStateUpdate(camIndex, "READY", Color.LightGray)); }
                     break;
             }
         }
 
-        private void lblStateUpdate(string text, Color color) { if (_lblBigResult != null && !_lblBigResult.IsDisposed) { _lblBigResult.Text = text; _lblBigResult.BackColor = color; } }
+        private void lblStateUpdate(int camIndex, string text, Color color) {
+            if (_lblBigResults[camIndex] != null && !_lblBigResults[camIndex].IsDisposed) {
+                _lblBigResults[camIndex].Text = $"Cam{camIndex+1}: {text}";
+                _lblBigResults[camIndex].BackColor = color;
+            }
+        }
 
-        private void ProcessInspectionResult(int inspectResult, double brightness)
+        private void ProcessInspectionResult(int camIndex, int inspectResult, double brightness)
         {
+            var camSettings = camIndex == 0 ? _appSettings.Cam1 : _appSettings.Cam2;
             bool isOk = (inspectResult == 1);
-            AppendLog($"検査完了。結果: {(isOk ? "OK" : "NG")} (D{_appSettings.WriteDeviceAddress} に判定結果を送信します)");
-            _plc.SendResult(isOk);
+            AppendLog($"Cam{camIndex+1} 検査完了。結果: {(isOk ? "OK" : "NG")} (D{camSettings.WriteDeviceAddress} に送信)");
+            _plc.SendResult(isOk, camSettings.OkDeviceAddress, camSettings.NgDeviceAddress);
+
             if (_appSettings.TriggerMode == "Plc")
             {
-                AppendLog($"PLCのトリガアドレス D{_appSettings.ReadDeviceAddress} をクリア (0書き込み) します");
-                Task.Run(() => _plc.WriteDevice(_appSettings.ReadDeviceAddress, 0));
+                AppendLog($"Cam{camIndex+1} PLCトリガ M{camSettings.ReadDeviceAddress} をクリア");
+                Task.Run(() => _plc.WriteDevice(camSettings.ReadDeviceAddress, 0));
             }
-            SafeInvoke(() => UpdateResultDisplay(inspectResult, false, brightness));
-            _pendingSaveResult = inspectResult;
+            SafeInvoke(() => UpdateResultDisplay(camIndex, inspectResult, false, brightness));
+            _pendingSaveResults[camIndex] = inspectResult;
 
             // ★分析モジュールへの登録処理
-            double lastAngle = _measurement.LastOuterAngleDeg; // 最後の実測角度
+            double lastAngle = _measurements[camIndex].LastOuterAngleDeg;
             _analyzer.AddRecord(lastAngle, brightness, isOk, _logDirPath);
         }
 
-        private void UpdateUIDisplay(Mat frame, double b, bool isDebug)
+        private void UpdateUIDisplay(int camIndex, Mat frame, double b, bool isDebug)
         {
             if (!_isUiLoaded || this.IsDisposed) return;
             using (Mat disp = new Mat())
@@ -692,28 +791,35 @@ namespace _20260224SolderInspec
                 if (_chkShowOverlay.Checked)
                 {
                     Cv2.Rectangle(disp, _roi, Scalar.Yellow, 2);
-                    Cv2.Rectangle(disp, _measurement.BtmMeasureRoi, new Scalar(0, 150, 150), 2);
+                    Cv2.Rectangle(disp, _measurements[camIndex].BtmMeasureRoi, new Scalar(0, 150, 150), 2);
 
-                    Cv2.Rectangle(disp, _measurement.BtmInnerLeftRoi, new Scalar(0, 0, 255), 2);
-                    Cv2.Rectangle(disp, _measurement.BtmInnerRightRoi, new Scalar(0, 0, 255), 2);
+                    Cv2.Rectangle(disp, _measurements[camIndex].BtmInnerLeftRoi, new Scalar(0, 0, 255), 2);
+                    Cv2.Rectangle(disp, _measurements[camIndex].BtmInnerRightRoi, new Scalar(0, 0, 255), 2);
 
-                    if (_measurement.EnableOuterTiltCheck) { Cv2.Rectangle(disp, _measurement.TiltLeftRoi, Scalar.Cyan, 2); Cv2.Rectangle(disp, _measurement.TiltRightRoi, Scalar.Cyan, 2); }
-                    if (_measurement.EnableHoleCheck) { Cv2.Rectangle(disp, _measurement.HolesRoi, Scalar.Orange, 2); }
-                    if (_measurement.EnableJigCheck) { Cv2.Rectangle(disp, _measurement.JigLeftRoi, Scalar.Yellow, 2); Cv2.Rectangle(disp, _measurement.JigRightRoi, Scalar.Yellow, 2); }
+                    if (_measurements[camIndex].EnableOuterTiltCheck) { Cv2.Rectangle(disp, _measurements[camIndex].TiltLeftRoi, Scalar.Cyan, 2); Cv2.Rectangle(disp, _measurements[camIndex].TiltRightRoi, Scalar.Cyan, 2); }
+                    if (_measurements[camIndex].EnableHoleCheck) { Cv2.Rectangle(disp, _measurements[camIndex].HolesRoi, Scalar.Orange, 2); }
+                    if (_measurements[camIndex].EnableJigCheck) { Cv2.Rectangle(disp, _measurements[camIndex].JigLeftRoi, Scalar.Yellow, 2); Cv2.Rectangle(disp, _measurements[camIndex].JigRightRoi, Scalar.Yellow, 2); }
                     Cv2.Rectangle(disp, _saveRoi, Scalar.LightSkyBlue, 1);
-                    Cv2.Line(disp, new CvPoint(0, _measurement.SplitBoundaryY), new CvPoint(disp.Width, _measurement.SplitBoundaryY), Scalar.LightGray, 2);
-                    Cv2.Line(disp, new CvPoint(_measurement.SplitBoundaryX, 0), new CvPoint(_measurement.SplitBoundaryX, disp.Height), Scalar.LightGray, 2);
-                    _measurement.DrawOverlay(disp);
+                    Cv2.Line(disp, new CvPoint(0, _measurements[camIndex].SplitBoundaryY), new CvPoint(disp.Width, _measurements[camIndex].SplitBoundaryY), Scalar.LightGray, 2);
+                    Cv2.Line(disp, new CvPoint(_measurements[camIndex].SplitBoundaryX, 0), new CvPoint(_measurements[camIndex].SplitBoundaryX, disp.Height), Scalar.LightGray, 2);
+                    _measurements[camIndex].DrawOverlay(disp);
                 }
 
-                if (_pendingSaveResult != -1) { if (_saveMode == 2 || (_saveMode == 1 && _pendingSaveResult != 1)) SaveInspectionImage(disp, _pendingSaveResult); _pendingSaveResult = -1; }
-                Bitmap bmp = BitmapConverter.ToBitmap(disp); Image old = _pictureBox.Image; _pictureBox.Image = bmp; old?.Dispose();
+                if (_pendingSaveResults[camIndex] != -1) { if (_saveMode == 2 || (_saveMode == 1 && _pendingSaveResults[camIndex] != 1)) SaveInspectionImage(disp, _pendingSaveResults[camIndex]); _pendingSaveResults[camIndex] = -1; }
+                Bitmap bmp = BitmapConverter.ToBitmap(disp); Image old = _pictureBoxes[camIndex].Image; _pictureBoxes[camIndex].Image = bmp; old?.Dispose();
             }
-            if (isDebug) { using (Mat binImg = new Mat()) { _measurement.GetDebugImage(binImg); if (!binImg.Empty()) { Bitmap bmpD = BitmapConverter.ToBitmap(binImg); Image oldD = _pictureBoxDebug.Image; _pictureBoxDebug.Image = bmpD; oldD?.Dispose(); } } }
-            if (_lblCurrentHoleDistPx != null && !_lblCurrentHoleDistPx.IsDisposed && _measurement.LastHoleDistancePx > 0) _lblCurrentHoleDistPx.Text = "現在の穴/エッジ間距離: " + _measurement.LastHoleDistancePx.ToString("F1") + " px";
-            if (_lblStatus != null && !_lblStatus.IsDisposed) { if (!_isRunning) { _lblStatus.Text = "Status: STOPPED"; _lblStatus.ForeColor = Color.Red; } else { _lblStatus.Text = "Status: " + (_currentState == 0 ? "WAITING" : (_currentState == 1 ? "STABILIZING" : "COOLING")); _lblStatus.ForeColor = _currentState == 0 ? Color.Gray : (_currentState == 1 ? Color.Goldenrod : Color.LimeGreen); } }
-            if (_lblBrightness != null && !_lblBrightness.IsDisposed) _lblBrightness.Text = "Brightness: " + b.ToString("F1");
-            if (_lblFps != null && !_lblFps.IsDisposed) _lblFps.Text = _currentFpsText;
+            if (isDebug) { using (Mat binImg = new Mat()) { _measurements[camIndex].GetDebugImage(binImg); if (!binImg.Empty()) { Bitmap bmpD = BitmapConverter.ToBitmap(binImg); Image oldD = _pictureBoxDebug.Image; _pictureBoxDebug.Image = bmpD; oldD?.Dispose(); } } }
+            if (_lblCurrentHoleDistPx != null && !_lblCurrentHoleDistPx.IsDisposed && _measurements[camIndex].LastHoleDistancePx > 0 && camIndex == 0) _lblCurrentHoleDistPx.Text = "現在の穴/エッジ間距離: " + _measurements[camIndex].LastHoleDistancePx.ToString("F1") + " px";
+
+            if (_lblStatuses[camIndex] != null && !_lblStatuses[camIndex].IsDisposed) {
+                if (!_isRunning) { _lblStatuses[camIndex].Text = $"Cam{camIndex+1} Status: STOPPED"; _lblStatuses[camIndex].ForeColor = Color.Red; }
+                else {
+                    _lblStatuses[camIndex].Text = $"Cam{camIndex+1} Status: " + (_currentStates[camIndex] == 0 ? "WAITING" : (_currentStates[camIndex] == 1 ? "STABILIZING" : "COOLING"));
+                    _lblStatuses[camIndex].ForeColor = _currentStates[camIndex] == 0 ? Color.Gray : (_currentStates[camIndex] == 1 ? Color.Goldenrod : Color.LimeGreen);
+                }
+            }
+            if (_lblBrightnesses[camIndex] != null && !_lblBrightnesses[camIndex].IsDisposed) _lblBrightnesses[camIndex].Text = $"Cam{camIndex+1} Brightness: " + b.ToString("F1");
+            if (_lblFpsList[camIndex] != null && !_lblFpsList[camIndex].IsDisposed) _lblFpsList[camIndex].Text = _currentFpsTexts[camIndex];
         }
 
         private void SaveInspectionImage(Mat img, int res)
@@ -721,11 +827,11 @@ namespace _20260224SolderInspec
             try { Mat imgToSave = img.Clone(); Task.Run(() => { try { string dir = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd")); if (!Directory.Exists(dir)) Directory.CreateDirectory(dir); string resStr = (res == 1) ? "OK" : "NG"; string fileName = string.Format("{0:HHmmss_fff}_{1}.jpg", DateTime.Now, resStr); string path = Path.Combine(dir, fileName); CvRect crop = _saveRoi & new CvRect(0, 0, imgToSave.Width, imgToSave.Height); using (Mat cropped = new Mat(imgToSave, crop)) using (Mat resized = new Mat()) { Cv2.Resize(cropped, resized, new CvSize(cropped.Width / 2, cropped.Height / 2)); var p = new ImageEncodingParam(ImwriteFlags.JpegQuality, 65); Cv2.ImWrite(path, resized, p); } } catch { } finally { if (imgToSave != null && !imgToSave.IsDisposed) imgToSave.Dispose(); } }); } catch { }
         }
 
-        private void UpdateResultDisplay(int res, bool manual, double brightness = 0.0)
+        private void UpdateResultDisplay(int camIndex, int res, bool manual, double brightness = 0.0)
         {
-            if (_lblBigResult == null || _lblBigResult.IsDisposed) return;
-            _lblBigResult.Text = res == 1 ? "OK" : "NG";
-            _lblBigResult.BackColor = res == 1 ? Color.LimeGreen : Color.Red;
+            if (_lblBigResults[camIndex] == null || _lblBigResults[camIndex].IsDisposed) return;
+            _lblBigResults[camIndex].Text = $"Cam{camIndex+1}: " + (res == 1 ? "OK" : "NG");
+            _lblBigResults[camIndex].BackColor = res == 1 ? Color.LimeGreen : Color.Red;
             if (!manual)
             {
                 _totalCount++;
