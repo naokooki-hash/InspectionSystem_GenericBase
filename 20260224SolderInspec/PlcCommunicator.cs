@@ -70,12 +70,12 @@ namespace _20260224SolderInspec
             }
         }
 
-        // --- 判定結果送信 (良品=M100 ON/M101 OFF, 不良=M100 OFF/M101 ON) ---
-        public bool SendResult(bool isOk)
+        // --- 判定結果送信 (良品=ON, 不良=ON) ---
+        public bool SendResult(bool isOk, int okAddress, int ngAddress)
         {
             bool success = true;
-            success &= WriteDevice(_settings.OkDeviceAddress, isOk ? 1 : 0);
-            success &= WriteDevice(_settings.NgDeviceAddress, isOk ? 0 : 1);
+            success &= WriteDevice(okAddress, isOk ? 1 : 0);
+            success &= WriteDevice(ngAddress, isOk ? 0 : 1);
             return success;
         }
 

@@ -20,7 +20,7 @@ namespace _20260224SolderInspec
 
         public bool IsConnected => camDevice != null;
 
-        public bool Initialize()
+        public bool Initialize(int cameraIndex = 0)
         {
             try
             {
@@ -30,9 +30,9 @@ namespace _20260224SolderInspec
 
                 int camNum;
                 camSystem.GetNumOfCameras(out camNum);
-                if (camNum == 0) return false;
+                if (camNum == 0 || cameraIndex >= camNum) return false;
 
-                camSystem.CreateDeviceObject(0, ref camDevice);
+                camSystem.CreateDeviceObject((uint)cameraIndex, ref camDevice);
                 if (camDevice.Open() != CamApiStatus.Success) return false;
 
                 // =================================================================

@@ -7,17 +7,27 @@ namespace _20260224SolderInspec
     /// <summary>
     /// PLC通信およびトリガーモードを管理するための設定クラス
     /// </summary>
-    public class AppSettings
+    public class CameraSettings
     {
-        // --- PLC通信設定 ---
-        public string PlcIpAddress { get; set; } = "192.168.3.250"; // 実機IPアドレス
-        public int PlcPort { get; set; } = 5000;                     // 実機ポート
+        public string SerialNumber { get; set; } = "";
+        public string IpAddress { get; set; } = "";
 
         // --- デバイスアドレス設定 ---
         public int OkDeviceAddress { get; set; } = 100;    // 良品結果書き込み先 (M100)
         public int NgDeviceAddress { get; set; } = 101;    // 不良品結果書き込み先 (M101)
         public int ReadDeviceAddress { get; set; } = 102;  // トリガー信号を読み取る先 (M102)
         public int WriteDeviceAddress { get; set; } = 100; // 互換用
+    }
+
+    public class AppSettings
+    {
+        // --- PLC通信設定 ---
+        public string PlcIpAddress { get; set; } = "192.168.3.250"; // 実機IPアドレス
+        public int PlcPort { get; set; } = 5000;                     // 実機ポート
+
+        // --- カメラ別設定 ---
+        public CameraSettings Cam1 { get; set; } = new CameraSettings { OkDeviceAddress = 100, NgDeviceAddress = 101, ReadDeviceAddress = 102, WriteDeviceAddress = 100 };
+        public CameraSettings Cam2 { get; set; } = new CameraSettings { OkDeviceAddress = 200, NgDeviceAddress = 201, ReadDeviceAddress = 202, WriteDeviceAddress = 200 };
 
         // --- 動作モード設定 ---
         public string TriggerMode { get; set; } = "Plc"; // "Plc" または "Visual"
