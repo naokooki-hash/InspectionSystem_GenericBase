@@ -32,7 +32,7 @@ namespace _20260224SolderInspec
                 camSystem.GetNumOfCameras(out camNum);
                 if (camNum == 0 || cameraIndex >= camNum) return false;
 
-                camSystem.CreateDeviceObject((uint)cameraIndex, ref camDevice);
+                camSystem.CreateDeviceObject(cameraIndex, ref camDevice);
                 if (camDevice.Open() != CamApiStatus.Success) return false;
 
                 // =================================================================

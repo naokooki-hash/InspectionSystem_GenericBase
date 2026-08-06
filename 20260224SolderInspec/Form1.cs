@@ -337,6 +337,7 @@ namespace _20260224SolderInspec
 
         private void InitializeInspectionTab(TabPage tab)
         {
+            var m = _measurements[0];
             int y = 10, lw = 160, cw = 100, lh = 28;
             void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M)
             {
@@ -358,41 +359,41 @@ namespace _20260224SolderInspec
             }
 
             tab.Controls.Add(new Label { Text = "--- 検査モード 選択 (複数ONで並列・OR判定) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Magenta, Font = new Font(this.Font, FontStyle.Bold) }); y += 22;
-            _chkEnableJigCheck = new CheckBox { Text = "エッジ間距離測定を有効にする", Location = new Point(10, y), AutoSize = true, Checked = _measurement.EnableJigCheck };
+            _chkEnableJigCheck = new CheckBox { Text = "エッジ間距離測定を有効にする", Location = new Point(10, y), AutoSize = true, Checked = m.EnableJigCheck };
             _chkEnableJigCheck.CheckedChanged += (s, e) => UpdateSettingsFromUI(); tab.Controls.Add(_chkEnableJigCheck); y += 22;
-            _chkEnableOuterTiltCheck = new CheckBox { Text = "【モードA】 外形エッジで製品の傾き・ズレを検査する", Location = new Point(10, y), AutoSize = true, Checked = _measurement.EnableOuterTiltCheck, ForeColor = Color.Teal };
+            _chkEnableOuterTiltCheck = new CheckBox { Text = "【モードA】 外形エッジで製品の傾き・ズレを検査する", Location = new Point(10, y), AutoSize = true, Checked = m.EnableOuterTiltCheck, ForeColor = Color.Teal };
             _chkEnableOuterTiltCheck.CheckedChanged += (s, e) => UpdateSettingsFromUI(); tab.Controls.Add(_chkEnableOuterTiltCheck); y += 22;
-            _chkEnableHoleCheck = new CheckBox { Text = "【モードB】 穴で製品の傾き・ズレを検査する", Location = new Point(10, y), AutoSize = true, Checked = _measurement.EnableHoleCheck, ForeColor = Color.Blue };
+            _chkEnableHoleCheck = new CheckBox { Text = "【モードB】 穴で製品の傾き・ズレを検査する", Location = new Point(10, y), AutoSize = true, Checked = m.EnableHoleCheck, ForeColor = Color.Blue };
             _chkEnableHoleCheck.CheckedChanged += (s, e) => UpdateSettingsFromUI(); tab.Controls.Add(_chkEnableHoleCheck); y += 28;
 
             tab.Controls.Add(new Label { Text = "--- 【モードA】 外形エッジ パラメータ ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Teal }); y += 22;
-            AddRect("左エッジROI(青):", ref _nudTiltLX, ref _nudTiltLY, ref _nudTiltLW, ref _nudTiltLH, _measurement.TiltLeftRoi);
-            AddRect("右エッジROI(青):", ref _nudTiltRX, ref _nudTiltRY, ref _nudTiltRW, ref _nudTiltRH, _measurement.TiltRightRoi);
-            AddN("目標 Xずれ(mm):", ref _nudOuterTargetX, -100, 100, (decimal)_measurement.TargetOuterXOffsetMm, 2, 0.1M);
-            AddN("Xずれ許容(mm):", ref _nudOuterOffsetX, 0, 50, (decimal)_measurement.OuterOffsetToleranceMm, 2, 0.1M);
-            AddN("目標 Θ(deg):", ref _nudOuterTargetA, -180, 180, (decimal)_measurement.TargetOuterAngleDeg, 2, 0.1M);
-            AddN("Θ許容(deg):", ref _nudOuterOffsetA, 0, 90, (decimal)_measurement.OuterAngleToleranceDeg, 2, 0.1M); y += 10;
+            AddRect("左エッジROI(青):", ref _nudTiltLX, ref _nudTiltLY, ref _nudTiltLW, ref _nudTiltLH, m.TiltLeftRoi);
+            AddRect("右エッジROI(青):", ref _nudTiltRX, ref _nudTiltRY, ref _nudTiltRW, ref _nudTiltRH, m.TiltRightRoi);
+            AddN("目標 Xずれ(mm):", ref _nudOuterTargetX, -100, 100, (decimal)m.TargetOuterXOffsetMm, 2, 0.1M);
+            AddN("Xずれ許容(mm):", ref _nudOuterOffsetX, 0, 50, (decimal)m.OuterOffsetToleranceMm, 2, 0.1M);
+            AddN("目標 Θ(deg):", ref _nudOuterTargetA, -180, 180, (decimal)m.TargetOuterAngleDeg, 2, 0.1M);
+            AddN("Θ許容(deg):", ref _nudOuterOffsetA, 0, 90, (decimal)m.OuterAngleToleranceDeg, 2, 0.1M); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- 【モードB】 穴 パラメータ ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
-            AddRect("基準穴 ROI:", ref _nudHolesX, ref _nudHolesY, ref _nudHolesW, ref _nudHolesH, _measurement.HolesRoi);
-            AddN("穴 最小面積:", ref _nudMinHoleArea, 0, 100000, _measurement.MinHoleArea);
-            AddN("穴 最大面積:", ref _nudMaxHoleArea, 0, 1000000, _measurement.MaxHoleArea);
-            AddN("真円度しきい値:", ref _nudMinCircularity, 0, 1, (decimal)_measurement.MinCircularity, 2, 0.05M);
-            AddN("目標 Xずれ(mm):", ref _nudTargetXOffset, -100, 100, (decimal)_measurement.TargetXOffsetMm, 2, 0.1M);
-            AddN("Xずれ許容(mm):", ref _nudOffsetTolerance, 0, 50, (decimal)_measurement.OffsetToleranceMm, 2, 0.1M);
-            AddN("目標 Θ(deg):", ref _nudTargetAngle, -180, 180, (decimal)_measurement.TargetAngleDeg, 2, 0.1M);
-            AddN("Θ許容(deg):", ref _nudAngleTolerance, 0, 90, (decimal)_measurement.AngleToleranceDeg, 2, 0.1M); y += 10;
+            AddRect("基準穴 ROI:", ref _nudHolesX, ref _nudHolesY, ref _nudHolesW, ref _nudHolesH, m.HolesRoi);
+            AddN("穴 最小面積:", ref _nudMinHoleArea, 0, 100000, m.MinHoleArea);
+            AddN("穴 最大面積:", ref _nudMaxHoleArea, 0, 1000000, m.MaxHoleArea);
+            AddN("真円度しきい値:", ref _nudMinCircularity, 0, 1, (decimal)m.MinCircularity, 2, 0.05M);
+            AddN("目標 Xずれ(mm):", ref _nudTargetXOffset, -100, 100, (decimal)m.TargetXOffsetMm, 2, 0.1M);
+            AddN("Xずれ許容(mm):", ref _nudOffsetTolerance, 0, 50, (decimal)m.OffsetToleranceMm, 2, 0.1M);
+            AddN("目標 Θ(deg):", ref _nudTargetAngle, -180, 180, (decimal)m.TargetAngleDeg, 2, 0.1M);
+            AddN("Θ許容(deg):", ref _nudAngleTolerance, 0, 90, (decimal)m.AngleToleranceDeg, 2, 0.1M); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- エッジ間距離 測定設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Olive }); y += 22;
-            AddRect("左エッジ ROI:", ref _nudJigLX, ref _nudJigLY, ref _nudJigLW, ref _nudJigLH, _measurement.JigLeftRoi);
-            AddRect("右エッジ ROI:", ref _nudJigRX, ref _nudJigRY, ref _nudJigRW, ref _nudJigRH, _measurement.JigRightRoi);
-            AddN("エッジ目標距離(mm):", ref _nudJigTarget, 0, 500, (decimal)_measurement.TargetJigDistanceMm, 2, 0.1M);
-            AddN("エッジ許容誤差(mm):", ref _nudJigTolerance, 0, 50, (decimal)_measurement.JigToleranceMm, 2, 0.1M); y += 10;
+            AddRect("左エッジ ROI:", ref _nudJigLX, ref _nudJigLY, ref _nudJigLW, ref _nudJigLH, m.JigLeftRoi);
+            AddRect("右エッジ ROI:", ref _nudJigRX, ref _nudJigRY, ref _nudJigRW, ref _nudJigRH, m.JigRightRoi);
+            AddN("エッジ目標距離(mm):", ref _nudJigTarget, 0, 500, (decimal)m.TargetJigDistanceMm, 2, 0.1M);
+            AddN("エッジ許容誤差(mm):", ref _nudJigTolerance, 0, 50, (decimal)m.JigToleranceMm, 2, 0.1M); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- 下部測定 ROI ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkGoldenrod }); y += 22;
-            AddRect("Btm線 ROI(黄):", ref _nudBtmRoiX, ref _nudBtmRoiY, ref _nudBtmRoiW, ref _nudBtmRoiH, _measurement.BtmMeasureRoi);
-            AddRect("Btm内側左 ROI(赤):", ref _nudBtmInnerLX, ref _nudBtmInnerLY, ref _nudBtmInnerLW, ref _nudBtmInnerLH, _measurement.BtmInnerLeftRoi);
-            AddRect("Btm内側右 ROI(赤):", ref _nudBtmInnerRX, ref _nudBtmInnerRY, ref _nudBtmInnerRW, ref _nudBtmInnerRH, _measurement.BtmInnerRightRoi); y += 10;
+            AddRect("Btm線 ROI(黄):", ref _nudBtmRoiX, ref _nudBtmRoiY, ref _nudBtmRoiW, ref _nudBtmRoiH, m.BtmMeasureRoi);
+            AddRect("Btm内側左 ROI(赤):", ref _nudBtmInnerLX, ref _nudBtmInnerLY, ref _nudBtmInnerLW, ref _nudBtmInnerLH, m.BtmInnerLeftRoi);
+            AddRect("Btm内側右 ROI(赤):", ref _nudBtmInnerRX, ref _nudBtmInnerRY, ref _nudBtmInnerRW, ref _nudBtmInnerRH, m.BtmInnerRightRoi); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- キャリブレーション (Pixel/mm比率) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkOrange }); y += 22;
             _lblCurrentHoleDistPx = new Label { Text = "現在の穴/エッジ間距離: 0.0 px", Location = new Point(10, y), Size = new Size(300, 20), ForeColor = Color.DarkOrange, Font = new Font(this.Font, FontStyle.Bold) };
@@ -401,15 +402,16 @@ namespace _20260224SolderInspec
             tab.Controls.Add(new Label { Text = "実測の距離(mm):", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); tab.Controls.Add(_nudActualWidthMm); y += lh;
             _btnCalcRatio = new Button { Text = "比率を自動計算", Location = new Point(10, y), Size = new Size(360, 30), BackColor = Color.LightYellow };
             _btnCalcRatio.Click += (s, e) => {
-                if (_measurement.LastHoleDistancePx <= 0) { MessageBox.Show("先にテスト実行して検出させてください。"); return; }
-                _nudPixelToMm.Value = _nudActualWidthMm.Value / (decimal)_measurement.LastHoleDistancePx;
+                if (m.LastHoleDistancePx <= 0) { MessageBox.Show("先にテスト実行して検出させてください。"); return; }
+                _nudPixelToMm.Value = _nudActualWidthMm.Value / (decimal)m.LastHoleDistancePx;
                 MessageBox.Show("更新しました。各種目標(mm)を再設定してください。");
             }; tab.Controls.Add(_btnCalcRatio); y += 45;
-            AddN("Pixel->mm比率:", ref _nudPixelToMm, 0.0001M, 1, (decimal)_measurement.PixelToMmRatio, 5, 0.001M);
+            AddN("Pixel->mm比率:", ref _nudPixelToMm, 0.0001M, 1, (decimal)m.PixelToMmRatio, 5, 0.001M);
         }
 
         private void InitializeDebugTab(TabPage tab)
         {
+            var m = _measurements[0];
             int y = 10, lw = 150, cw = 100, lh = 28;
             void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M)
             {
@@ -422,20 +424,20 @@ namespace _20260224SolderInspec
             tab.Controls.Add(_pictureBoxDebug); y += 300;
 
             tab.Controls.Add(new Label { Text = "--- ★外形エッジ(青枠) 専用閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Teal }); y += 22;
-            AddN("左エッジ(青) 閾値:", ref _nudThreshOuterL, 0, 255, _measurement.ThreshOuterL, 0, 1M);
-            AddN("右エッジ(青) 閾値:", ref _nudThreshOuterR, 0, 255, _measurement.ThreshOuterR, 0, 1M); y += 10;
+            AddN("左エッジ(青) 閾値:", ref _nudThreshOuterL, 0, 255, m.ThreshOuterL, 0, 1M);
+            AddN("右エッジ(青) 閾値:", ref _nudThreshOuterR, 0, 255, m.ThreshOuterR, 0, 1M); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- ★BTM内側(赤枠) 専用閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkRed }); y += 22;
-            AddN("左内側(赤) 閾値:", ref _nudThreshBtmInnerL, 0, 255, _measurement.ThreshBtmInnerL, 0, 1M);
-            AddN("右内側(赤) 閾値:", ref _nudThreshBtmInnerR, 0, 255, _measurement.ThreshBtmInnerR, 0, 1M); y += 10;
+            AddN("左内側(赤) 閾値:", ref _nudThreshBtmInnerL, 0, 255, m.ThreshBtmInnerL, 0, 1M);
+            AddN("右内側(赤) 閾値:", ref _nudThreshBtmInnerR, 0, 255, m.ThreshBtmInnerR, 0, 1M); y += 10;
 
             tab.Controls.Add(new Label { Text = "--- ★4分割 二値化 閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
-            AddN("上下分割 Y境界線:", ref _nudSplitY, 0, 3000, _measurement.SplitBoundaryY, 0, 1M);
-            AddN("左右分割 X境界線:", ref _nudSplitX, 0, 3000, _measurement.SplitBoundaryX, 0, 1M);
-            AddN("左上 (TL) 閾値:", ref _nudThreshTL, 0, 255, _measurement.ThreshTopLeft, 0, 1M);
-            AddN("右上 (TR) 閾値:", ref _nudThreshTR, 0, 255, _measurement.ThreshTopRight, 0, 1M);
-            AddN("左下 (BL) 閾値:", ref _nudThreshBL, 0, 255, _measurement.ThreshBtmLeft, 0, 1M);
-            AddN("右下 (BR) 閾値:", ref _nudThreshBR, 0, 255, _measurement.ThreshBtmRight, 0, 1M);
+            AddN("上下分割 Y境界線:", ref _nudSplitY, 0, 3000, m.SplitBoundaryY, 0, 1M);
+            AddN("左右分割 X境界線:", ref _nudSplitX, 0, 3000, m.SplitBoundaryX, 0, 1M);
+            AddN("左上 (TL) 閾値:", ref _nudThreshTL, 0, 255, m.ThreshTopLeft, 0, 1M);
+            AddN("右上 (TR) 閾値:", ref _nudThreshTR, 0, 255, m.ThreshTopRight, 0, 1M);
+            AddN("左下 (BL) 閾値:", ref _nudThreshBL, 0, 255, m.ThreshBtmLeft, 0, 1M);
+            AddN("右下 (BR) 閾値:", ref _nudThreshBR, 0, 255, m.ThreshBtmRight, 0, 1M);
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -843,44 +845,54 @@ namespace _20260224SolderInspec
 
         private void UpdateCounterDisplay() { if (_lblTotal == null || _lblTotal.IsDisposed) return; _lblTotal.Text = "総検査数 : " + _totalCount; _lblOk.Text = "良品 (OK): " + _okCount; _lblNg.Text = "不良 (NG): " + _ngCount; }
 
+        private void CopySettingsToMeasurement(MeasurementCore m)
+        {
+            if (m == null) return;
+
+            if (_chkEnableJigCheck != null) m.EnableJigCheck = _chkEnableJigCheck.Checked;
+            if (_chkEnableOuterTiltCheck != null) m.EnableOuterTiltCheck = _chkEnableOuterTiltCheck.Checked;
+            if (_chkEnableHoleCheck != null) m.EnableHoleCheck = _chkEnableHoleCheck.Checked;
+
+            m.TiltLeftRoi = new CvRect((int)_nudTiltLX.Value, (int)_nudTiltLY.Value, (int)_nudTiltLW.Value, (int)_nudTiltLH.Value);
+            m.TiltRightRoi = new CvRect((int)_nudTiltRX.Value, (int)_nudTiltRY.Value, (int)_nudTiltRW.Value, (int)_nudTiltRH.Value);
+            m.ThreshOuterL = (int)_nudThreshOuterL.Value; m.ThreshOuterR = (int)_nudThreshOuterR.Value;
+
+            m.ThreshBtmInnerL = (int)_nudThreshBtmInnerL.Value; m.ThreshBtmInnerR = (int)_nudThreshBtmInnerR.Value;
+
+            m.TargetOuterXOffsetMm = (double)_nudOuterTargetX.Value; m.OuterOffsetToleranceMm = (double)_nudOuterOffsetX.Value;
+            m.TargetOuterAngleDeg = (double)_nudOuterTargetA.Value; m.OuterAngleToleranceDeg = (double)_nudOuterOffsetA.Value;
+
+            m.BtmMeasureRoi = new CvRect((int)_nudBtmRoiX.Value, (int)_nudBtmRoiY.Value, (int)_nudBtmRoiW.Value, (int)_nudBtmRoiH.Value);
+            m.BtmInnerLeftRoi = new CvRect((int)_nudBtmInnerLX.Value, (int)_nudBtmInnerLY.Value, (int)_nudBtmInnerLW.Value, (int)_nudBtmInnerLH.Value);
+            m.BtmInnerRightRoi = new CvRect((int)_nudBtmInnerRX.Value, (int)_nudBtmInnerRY.Value, (int)_nudBtmInnerRW.Value, (int)_nudBtmInnerRH.Value);
+
+            m.HolesRoi = new CvRect((int)_nudHolesX.Value, (int)_nudHolesY.Value, (int)_nudHolesW.Value, (int)_nudHolesH.Value);
+            m.MinHoleArea = (int)_nudMinHoleArea.Value; m.MaxHoleArea = (int)_nudMaxHoleArea.Value; m.MinCircularity = (double)_nudMinCircularity.Value;
+            m.SplitBoundaryX = (int)_nudSplitX.Value; m.SplitBoundaryY = (int)_nudSplitY.Value;
+            m.ThreshTopLeft = (int)_nudThreshTL.Value; m.ThreshTopRight = (int)_nudThreshTR.Value; m.ThreshBtmLeft = (int)_nudThreshBL.Value; m.ThreshBtmRight = (int)_nudThreshBR.Value;
+
+            m.JigLeftRoi = new CvRect((int)_nudJigLX.Value, (int)_nudJigLY.Value, (int)_nudJigLW.Value, (int)_nudJigLH.Value);
+            m.JigRightRoi = new CvRect((int)_nudJigRX.Value, (int)_nudJigRY.Value, (int)_nudJigRW.Value, (int)_nudJigRH.Value);
+            m.TargetJigDistanceMm = (double)_nudJigTarget.Value; m.JigToleranceMm = (double)_nudJigTolerance.Value;
+
+            m.PixelToMmRatio = (double)_nudPixelToMm.Value;
+            m.TargetXOffsetMm = (double)_nudTargetXOffset.Value; m.OffsetToleranceMm = (double)_nudOffsetTolerance.Value;
+            m.TargetAngleDeg = (double)_nudTargetAngle.Value; m.AngleToleranceDeg = (double)_nudAngleTolerance.Value;
+        }
+
         private void UpdateSettingsFromUI()
         {
             if (_isLoadingConfig) return;
-
-            if (_chkEnableJigCheck != null) _measurement.EnableJigCheck = _chkEnableJigCheck.Checked;
-            if (_chkEnableOuterTiltCheck != null) _measurement.EnableOuterTiltCheck = _chkEnableOuterTiltCheck.Checked;
-            if (_chkEnableHoleCheck != null) _measurement.EnableHoleCheck = _chkEnableHoleCheck.Checked;
 
             _triggerThreshold = (double)_nudTriggerThreshold.Value; _stabilityDurationMs = (int)_nudStabilityDuration.Value; _resetThreshold = (double)_nudResetThreshold.Value;
             _plcDelayMs = (int)_nudPlcDelayMs.Value; _maxRetryCount = (int)_nudRetryCount.Value; _retryDelayMs = (int)_nudRetryDelayMs.Value;
             _autoStartCount = (int)_nudAutoStartCount.Value; _roi = new CvRect((int)_nudRoiX.Value, (int)_nudRoiY.Value, (int)_nudRoiW.Value, (int)_nudRoiH.Value);
             _saveRoi = new CvRect((int)_nudSaveRoiX.Value, (int)_nudSaveRoiY.Value, (int)_nudSaveRoiW.Value, (int)_nudSaveRoiH.Value); _logKeepDays = (int)_nudLogKeepDays.Value;
 
-            _measurement.TiltLeftRoi = new CvRect((int)_nudTiltLX.Value, (int)_nudTiltLY.Value, (int)_nudTiltLW.Value, (int)_nudTiltLH.Value);
-            _measurement.TiltRightRoi = new CvRect((int)_nudTiltRX.Value, (int)_nudTiltRY.Value, (int)_nudTiltRW.Value, (int)_nudTiltRH.Value);
-            _measurement.ThreshOuterL = (int)_nudThreshOuterL.Value; _measurement.ThreshOuterR = (int)_nudThreshOuterR.Value;
-
-            _measurement.ThreshBtmInnerL = (int)_nudThreshBtmInnerL.Value; _measurement.ThreshBtmInnerR = (int)_nudThreshBtmInnerR.Value;
-
-            _measurement.TargetOuterXOffsetMm = (double)_nudOuterTargetX.Value; _measurement.OuterOffsetToleranceMm = (double)_nudOuterOffsetX.Value;
-            _measurement.TargetOuterAngleDeg = (double)_nudOuterTargetA.Value; _measurement.OuterAngleToleranceDeg = (double)_nudOuterOffsetA.Value;
-
-            _measurement.BtmMeasureRoi = new CvRect((int)_nudBtmRoiX.Value, (int)_nudBtmRoiY.Value, (int)_nudBtmRoiW.Value, (int)_nudBtmRoiH.Value);
-            _measurement.BtmInnerLeftRoi = new CvRect((int)_nudBtmInnerLX.Value, (int)_nudBtmInnerLY.Value, (int)_nudBtmInnerLW.Value, (int)_nudBtmInnerLH.Value);
-            _measurement.BtmInnerRightRoi = new CvRect((int)_nudBtmInnerRX.Value, (int)_nudBtmInnerRY.Value, (int)_nudBtmInnerRW.Value, (int)_nudBtmInnerRH.Value);
-
-            _measurement.HolesRoi = new CvRect((int)_nudHolesX.Value, (int)_nudHolesY.Value, (int)_nudHolesW.Value, (int)_nudHolesH.Value);
-            _measurement.MinHoleArea = (int)_nudMinHoleArea.Value; _measurement.MaxHoleArea = (int)_nudMaxHoleArea.Value; _measurement.MinCircularity = (double)_nudMinCircularity.Value;
-            _measurement.SplitBoundaryX = (int)_nudSplitX.Value; _measurement.SplitBoundaryY = (int)_nudSplitY.Value;
-            _measurement.ThreshTopLeft = (int)_nudThreshTL.Value; _measurement.ThreshTopRight = (int)_nudThreshTR.Value; _measurement.ThreshBtmLeft = (int)_nudThreshBL.Value; _measurement.ThreshBtmRight = (int)_nudThreshBR.Value;
-
-            _measurement.JigLeftRoi = new CvRect((int)_nudJigLX.Value, (int)_nudJigLY.Value, (int)_nudJigLW.Value, (int)_nudJigLH.Value);
-            _measurement.JigRightRoi = new CvRect((int)_nudJigRX.Value, (int)_nudJigRY.Value, (int)_nudJigRW.Value, (int)_nudJigRH.Value);
-            _measurement.TargetJigDistanceMm = (double)_nudJigTarget.Value; _measurement.JigToleranceMm = (double)_nudJigTolerance.Value;
-
-            _measurement.PixelToMmRatio = (double)_nudPixelToMm.Value;
-            _measurement.TargetXOffsetMm = (double)_nudTargetXOffset.Value; _measurement.OffsetToleranceMm = (double)_nudOffsetTolerance.Value;
-            _measurement.TargetAngleDeg = (double)_nudTargetAngle.Value; _measurement.AngleToleranceDeg = (double)_nudAngleTolerance.Value;
+            foreach (var m in _measurements)
+            {
+                CopySettingsToMeasurement(m);
+            }
         }
 
         private void LoadConfig()
@@ -893,16 +905,20 @@ namespace _20260224SolderInspec
                 int GetI(string k, int def) => d.TryGetValue(k, out var v) && int.TryParse(v, out int i) ? i : def;
                 double GetD(string k, double def) => d.TryGetValue(k, out var v) && double.TryParse(v, out double num) ? num : def;
 
-                _measurement.EnableJigCheck = d.TryGetValue("EnableJigCheck", out var ej) ? bool.Parse(ej) : true;
+                var defM = new MeasurementCore();
+
+                var enableJigCheck = d.TryGetValue("EnableJigCheck", out var ej) ? bool.Parse(ej) : defM.EnableJigCheck;
+                bool enableOuterTiltCheck = defM.EnableOuterTiltCheck;
+                bool enableHoleCheck = defM.EnableHoleCheck;
 
                 if (d.TryGetValue("UseOuterEdgeForTilt", out var uoe))
                 {
-                    bool useOuter = bool.Parse(uoe); _measurement.EnableOuterTiltCheck = useOuter; _measurement.EnableHoleCheck = !useOuter;
+                    bool useOuter = bool.Parse(uoe); enableOuterTiltCheck = useOuter; enableHoleCheck = !useOuter;
                 }
                 else
                 {
-                    _measurement.EnableOuterTiltCheck = d.TryGetValue("EnableOuterTiltCheck", out var eot) ? bool.Parse(eot) : true;
-                    _measurement.EnableHoleCheck = d.TryGetValue("EnableHoleCheck", out var ehc) ? bool.Parse(ehc) : true;
+                    enableOuterTiltCheck = d.TryGetValue("EnableOuterTiltCheck", out var eot) ? bool.Parse(eot) : defM.EnableOuterTiltCheck;
+                    enableHoleCheck = d.TryGetValue("EnableHoleCheck", out var ehc) ? bool.Parse(ehc) : defM.EnableHoleCheck;
                 }
 
                 _triggerOnBright = d.TryGetValue("TriggerOnBright", out var tb) ? bool.Parse(tb) : true;
@@ -913,40 +929,9 @@ namespace _20260224SolderInspec
                 _saveRoi = new CvRect(GetI("SaveRoiX", _saveRoi.X), GetI("SaveRoiY", _saveRoi.Y), GetI("SaveRoiW", _saveRoi.Width), GetI("SaveRoiH", _saveRoi.Height));
                 _logKeepDays = GetI("LogKeepDays", _logKeepDays);
 
-                _measurement.TiltLeftRoi = new CvRect(GetI("TiltLX", _measurement.TiltLeftRoi.X), GetI("TiltLY", _measurement.TiltLeftRoi.Y), GetI("TiltLW", _measurement.TiltLeftRoi.Width), GetI("TiltLH", _measurement.TiltLeftRoi.Height));
-                _measurement.TiltRightRoi = new CvRect(GetI("TiltRX", _measurement.TiltRightRoi.X), GetI("TiltRY", _measurement.TiltRightRoi.Y), GetI("TiltRW", _measurement.TiltRightRoi.Width), GetI("TiltRH", _measurement.TiltRightRoi.Height));
-                _measurement.ThreshOuterL = GetI("ThreshOuterL", 100); _measurement.ThreshOuterR = GetI("ThreshOuterR", 100);
-
-                _measurement.ThreshBtmInnerL = GetI("ThreshBtmInnerL", 51); _measurement.ThreshBtmInnerR = GetI("ThreshBtmInnerR", 51);
-
-                _measurement.TargetOuterXOffsetMm = GetD("TargetOuterXOffsetMm", _measurement.TargetOuterXOffsetMm);
-                _measurement.OuterOffsetToleranceMm = GetD("OuterOffsetToleranceMm", _measurement.OuterOffsetToleranceMm);
-                _measurement.TargetOuterAngleDeg = GetD("TargetOuterAngleDeg", _measurement.TargetOuterAngleDeg);
-                _measurement.OuterAngleToleranceDeg = GetD("OuterAngleToleranceDeg", _measurement.OuterAngleToleranceDeg);
-
-                _measurement.BtmMeasureRoi = new CvRect(GetI("BtmRoiX", _measurement.BtmMeasureRoi.X), GetI("BtmRoiY", _measurement.BtmMeasureRoi.Y), GetI("BtmRoiW", _measurement.BtmMeasureRoi.Width), GetI("BtmRoiH", _measurement.BtmMeasureRoi.Height));
-                _measurement.BtmInnerLeftRoi = new CvRect(GetI("BtmInnerLX", _measurement.BtmInnerLeftRoi.X), GetI("BtmInnerLY", _measurement.BtmInnerLeftRoi.Y), GetI("BtmInnerLW", _measurement.BtmInnerLeftRoi.Width), GetI("BtmInnerLH", _measurement.BtmInnerLeftRoi.Height));
-                _measurement.BtmInnerRightRoi = new CvRect(GetI("BtmInnerRX", _measurement.BtmInnerRightRoi.X), GetI("BtmInnerRY", _measurement.BtmInnerRightRoi.Y), GetI("BtmInnerRW", _measurement.BtmInnerRightRoi.Width), GetI("BtmInnerRH", _measurement.BtmInnerRightRoi.Height));
-
-                _measurement.HolesRoi = new CvRect(GetI("HolesX", _measurement.HolesRoi.X), GetI("HolesY", _measurement.HolesRoi.Y), GetI("HolesW", _measurement.HolesRoi.Width), GetI("HolesH", _measurement.HolesRoi.Height));
-                _measurement.MinHoleArea = GetI("MinHoleArea", _measurement.MinHoleArea); _measurement.MaxHoleArea = GetI("MaxHoleArea", _measurement.MaxHoleArea);
-                _measurement.MinCircularity = GetD("MinCirc", _measurement.MinCircularity);
-                _measurement.SplitBoundaryX = GetI("SplitBoundaryX", 320); _measurement.SplitBoundaryY = GetI("SplitBoundaryY", _measurement.SplitBoundaryY);
-                int oldEdge = GetI("EdgeThresh", 12); int oldHole = GetI("HoleThresh", 51);
-                _measurement.ThreshTopLeft = GetI("ThreshTL", oldEdge); _measurement.ThreshTopRight = GetI("ThreshTR", oldEdge);
-                _measurement.ThreshBtmLeft = GetI("ThreshBL", oldHole); _measurement.ThreshBtmRight = GetI("ThreshBR", oldHole);
-
-                _measurement.JigLeftRoi = new CvRect(GetI("JigLX", _measurement.JigLeftRoi.X), GetI("JigLY", _measurement.JigLeftRoi.Y), GetI("JigLW", _measurement.JigLeftRoi.Width), GetI("JigLH", _measurement.JigLeftRoi.Height));
-                _measurement.JigRightRoi = new CvRect(GetI("JigRX", _measurement.JigRightRoi.X), GetI("JigRY", _measurement.JigRightRoi.Y), GetI("JigRW", _measurement.JigRightRoi.Width), GetI("JigRH", _measurement.JigRightRoi.Height));
-
-                _measurement.TargetJigDistanceMm = GetD("JigTargetMm", _measurement.TargetJigDistanceMm); _measurement.JigToleranceMm = GetD("JigTolMm", _measurement.JigToleranceMm);
-                _measurement.PixelToMmRatio = GetD("PixelToMmRatio", _measurement.PixelToMmRatio);
-                _measurement.TargetXOffsetMm = GetD("TargetXOffsetMm", _measurement.TargetXOffsetMm); _measurement.OffsetToleranceMm = GetD("OffsetToleranceMm", _measurement.OffsetToleranceMm);
-                _measurement.TargetAngleDeg = GetD("TargetAngleDeg", _measurement.TargetAngleDeg); _measurement.AngleToleranceDeg = GetD("AngleToleranceDeg", _measurement.AngleToleranceDeg);
-
-                if (_chkEnableJigCheck != null) _chkEnableJigCheck.Checked = _measurement.EnableJigCheck;
-                if (_chkEnableOuterTiltCheck != null) _chkEnableOuterTiltCheck.Checked = _measurement.EnableOuterTiltCheck;
-                if (_chkEnableHoleCheck != null) _chkEnableHoleCheck.Checked = _measurement.EnableHoleCheck;
+                if (_chkEnableJigCheck != null) _chkEnableJigCheck.Checked = enableJigCheck;
+                if (_chkEnableOuterTiltCheck != null) _chkEnableOuterTiltCheck.Checked = enableOuterTiltCheck;
+                if (_chkEnableHoleCheck != null) _chkEnableHoleCheck.Checked = enableHoleCheck;
 
                 _cmbTriggerMode.SelectedIndex = _triggerOnBright ? 0 : 1; _cmbSaveMode.SelectedIndex = _saveMode;
                 _nudTriggerThreshold.Value = (decimal)_triggerThreshold; _nudStabilityDuration.Value = _stabilityDurationMs;
@@ -956,32 +941,38 @@ namespace _20260224SolderInspec
                 _nudSaveRoiX.Value = _saveRoi.X; _nudSaveRoiY.Value = _saveRoi.Y; _nudSaveRoiW.Value = _saveRoi.Width; _nudSaveRoiH.Value = _saveRoi.Height;
                 _nudLogKeepDays.Value = _logKeepDays;
 
-                _nudTiltLX.Value = _measurement.TiltLeftRoi.X; _nudTiltLY.Value = _measurement.TiltLeftRoi.Y; _nudTiltLW.Value = _measurement.TiltLeftRoi.Width; _nudTiltLH.Value = _measurement.TiltLeftRoi.Height;
-                _nudTiltRX.Value = _measurement.TiltRightRoi.X; _nudTiltRY.Value = _measurement.TiltRightRoi.Y; _nudTiltRW.Value = _measurement.TiltRightRoi.Width; _nudTiltRH.Value = _measurement.TiltRightRoi.Height;
-                _nudThreshOuterL.Value = _measurement.ThreshOuterL; _nudThreshOuterR.Value = _measurement.ThreshOuterR;
+                _nudTiltLX.Value = GetI("TiltLX", defM.TiltLeftRoi.X); _nudTiltLY.Value = GetI("TiltLY", defM.TiltLeftRoi.Y); _nudTiltLW.Value = GetI("TiltLW", defM.TiltLeftRoi.Width); _nudTiltLH.Value = GetI("TiltLH", defM.TiltLeftRoi.Height);
+                _nudTiltRX.Value = GetI("TiltRX", defM.TiltRightRoi.X); _nudTiltRY.Value = GetI("TiltRY", defM.TiltRightRoi.Y); _nudTiltRW.Value = GetI("TiltRW", defM.TiltRightRoi.Width); _nudTiltRH.Value = GetI("TiltRH", defM.TiltRightRoi.Height);
+                _nudThreshOuterL.Value = GetI("ThreshOuterL", defM.ThreshOuterL); _nudThreshOuterR.Value = GetI("ThreshOuterR", defM.ThreshOuterR);
 
-                _nudThreshBtmInnerL.Value = _measurement.ThreshBtmInnerL; _nudThreshBtmInnerR.Value = _measurement.ThreshBtmInnerR;
+                _nudThreshBtmInnerL.Value = GetI("ThreshBtmInnerL", defM.ThreshBtmInnerL); _nudThreshBtmInnerR.Value = GetI("ThreshBtmInnerR", defM.ThreshBtmInnerR);
 
-                _nudOuterTargetX.Value = (decimal)_measurement.TargetOuterXOffsetMm; _nudOuterOffsetX.Value = (decimal)_measurement.OuterOffsetToleranceMm;
-                _nudOuterTargetA.Value = (decimal)_measurement.TargetOuterAngleDeg; _nudOuterOffsetA.Value = (decimal)_measurement.OuterAngleToleranceDeg;
+                _nudOuterTargetX.Value = (decimal)GetD("TargetOuterXOffsetMm", defM.TargetOuterXOffsetMm); _nudOuterOffsetX.Value = (decimal)GetD("OuterOffsetToleranceMm", defM.OuterOffsetToleranceMm);
+                _nudOuterTargetA.Value = (decimal)GetD("TargetOuterAngleDeg", defM.TargetOuterAngleDeg); _nudOuterOffsetA.Value = (decimal)GetD("OuterAngleToleranceDeg", defM.OuterAngleToleranceDeg);
 
-                _nudBtmRoiX.Value = _measurement.BtmMeasureRoi.X; _nudBtmRoiY.Value = _measurement.BtmMeasureRoi.Y; _nudBtmRoiW.Value = _measurement.BtmMeasureRoi.Width; _nudBtmRoiH.Value = _measurement.BtmMeasureRoi.Height;
-                _nudBtmInnerLX.Value = _measurement.BtmInnerLeftRoi.X; _nudBtmInnerLY.Value = _measurement.BtmInnerLeftRoi.Y; _nudBtmInnerLW.Value = _measurement.BtmInnerLeftRoi.Width; _nudBtmInnerLH.Value = _measurement.BtmInnerLeftRoi.Height;
-                _nudBtmInnerRX.Value = _measurement.BtmInnerRightRoi.X; _nudBtmInnerRY.Value = _measurement.BtmInnerRightRoi.Y; _nudBtmInnerRW.Value = _measurement.BtmInnerRightRoi.Width; _nudBtmInnerRH.Value = _measurement.BtmInnerRightRoi.Height;
+                _nudBtmRoiX.Value = GetI("BtmRoiX", defM.BtmMeasureRoi.X); _nudBtmRoiY.Value = GetI("BtmRoiY", defM.BtmMeasureRoi.Y); _nudBtmRoiW.Value = GetI("BtmRoiW", defM.BtmMeasureRoi.Width); _nudBtmRoiH.Value = GetI("BtmRoiH", defM.BtmMeasureRoi.Height);
+                _nudBtmInnerLX.Value = GetI("BtmInnerLX", defM.BtmInnerLeftRoi.X); _nudBtmInnerLY.Value = GetI("BtmInnerLY", defM.BtmInnerLeftRoi.Y); _nudBtmInnerLW.Value = GetI("BtmInnerLW", defM.BtmInnerLeftRoi.Width); _nudBtmInnerLH.Value = GetI("BtmInnerLH", defM.BtmInnerLeftRoi.Height);
+                _nudBtmInnerRX.Value = GetI("BtmInnerRX", defM.BtmInnerRightRoi.X); _nudBtmInnerRY.Value = GetI("BtmInnerRY", defM.BtmInnerRightRoi.Y); _nudBtmInnerRW.Value = GetI("BtmInnerRW", defM.BtmInnerRightRoi.Width); _nudBtmInnerRH.Value = GetI("BtmInnerRH", defM.BtmInnerRightRoi.Height);
 
-                _nudHolesX.Value = _measurement.HolesRoi.X; _nudHolesY.Value = _measurement.HolesRoi.Y; _nudHolesW.Value = _measurement.HolesRoi.Width; _nudHolesH.Value = _measurement.HolesRoi.Height;
-                _nudMinHoleArea.Value = _measurement.MinHoleArea; _nudMaxHoleArea.Value = _measurement.MaxHoleArea; _nudMinCircularity.Value = (decimal)_measurement.MinCircularity;
-                _nudSplitX.Value = _measurement.SplitBoundaryX; _nudSplitY.Value = _measurement.SplitBoundaryY;
-                _nudThreshTL.Value = _measurement.ThreshTopLeft; _nudThreshTR.Value = _measurement.ThreshTopRight;
-                _nudThreshBL.Value = _measurement.ThreshBtmLeft; _nudThreshBR.Value = _measurement.ThreshBtmRight;
+                _nudHolesX.Value = GetI("HolesX", defM.HolesRoi.X); _nudHolesY.Value = GetI("HolesY", defM.HolesRoi.Y); _nudHolesW.Value = GetI("HolesW", defM.HolesRoi.Width); _nudHolesH.Value = GetI("HolesH", defM.HolesRoi.Height);
+                _nudMinHoleArea.Value = GetI("MinHoleArea", defM.MinHoleArea); _nudMaxHoleArea.Value = GetI("MaxHoleArea", defM.MaxHoleArea); _nudMinCircularity.Value = (decimal)GetD("MinCirc", defM.MinCircularity);
+                _nudSplitX.Value = GetI("SplitBoundaryX", defM.SplitBoundaryX); _nudSplitY.Value = GetI("SplitBoundaryY", defM.SplitBoundaryY);
+                int oldEdge = GetI("EdgeThresh", defM.ThreshTopLeft); int oldHole = GetI("HoleThresh", defM.ThreshBtmLeft);
+                _nudThreshTL.Value = GetI("ThreshTL", oldEdge); _nudThreshTR.Value = GetI("ThreshTR", oldEdge);
+                _nudThreshBL.Value = GetI("ThreshBL", oldHole); _nudThreshBR.Value = GetI("ThreshBR", oldHole);
 
-                _nudJigLX.Value = _measurement.JigLeftRoi.X; _nudJigLY.Value = _measurement.JigLeftRoi.Y; _nudJigLW.Value = _measurement.JigLeftRoi.Width; _nudJigLH.Value = _measurement.JigLeftRoi.Height;
-                _nudJigRX.Value = _measurement.JigRightRoi.X; _nudJigRY.Value = _measurement.JigRightRoi.Y; _nudJigRW.Value = _measurement.JigRightRoi.Width; _nudJigRH.Value = _measurement.JigRightRoi.Height;
+                _nudJigLX.Value = GetI("JigLX", defM.JigLeftRoi.X); _nudJigLY.Value = GetI("JigLY", defM.JigLeftRoi.Y); _nudJigLW.Value = GetI("JigLW", defM.JigLeftRoi.Width); _nudJigLH.Value = GetI("JigLH", defM.JigLeftRoi.Height);
+                _nudJigRX.Value = GetI("JigRX", defM.JigRightRoi.X); _nudJigRY.Value = GetI("JigRY", defM.JigRightRoi.Y); _nudJigRW.Value = GetI("JigRW", defM.JigRightRoi.Width); _nudJigRH.Value = GetI("JigRH", defM.JigRightRoi.Height);
 
-                _nudJigTarget.Value = (decimal)_measurement.TargetJigDistanceMm; _nudJigTolerance.Value = (decimal)_measurement.JigToleranceMm;
-                _nudPixelToMm.Value = (decimal)_measurement.PixelToMmRatio;
-                _nudTargetXOffset.Value = (decimal)_measurement.TargetXOffsetMm; _nudOffsetTolerance.Value = (decimal)_measurement.OffsetToleranceMm;
-                _nudTargetAngle.Value = (decimal)_measurement.TargetAngleDeg; _nudAngleTolerance.Value = (decimal)_measurement.AngleToleranceDeg;
+                _nudJigTarget.Value = (decimal)GetD("JigTargetMm", defM.TargetJigDistanceMm); _nudJigTolerance.Value = (decimal)GetD("JigTolMm", defM.JigToleranceMm);
+                _nudPixelToMm.Value = (decimal)GetD("PixelToMmRatio", defM.PixelToMmRatio);
+                _nudTargetXOffset.Value = (decimal)GetD("TargetXOffsetMm", defM.TargetXOffsetMm); _nudOffsetTolerance.Value = (decimal)GetD("OffsetToleranceMm", defM.OffsetToleranceMm);
+                _nudTargetAngle.Value = (decimal)GetD("TargetAngleDeg", defM.TargetAngleDeg); _nudAngleTolerance.Value = (decimal)GetD("AngleToleranceDeg", defM.AngleToleranceDeg);
+
+                foreach (var m in _measurements)
+                {
+                    CopySettingsToMeasurement(m);
+                }
             }
             catch { }
             finally { _isLoadingConfig = false; }
@@ -991,11 +982,12 @@ namespace _20260224SolderInspec
         {
             try
             {
+                var m = _measurements[0];
                 using (var sw = new StreamWriter(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt")))
                 {
-                    sw.WriteLine("EnableJigCheck=" + _measurement.EnableJigCheck);
-                    sw.WriteLine("EnableOuterTiltCheck=" + _measurement.EnableOuterTiltCheck);
-                    sw.WriteLine("EnableHoleCheck=" + _measurement.EnableHoleCheck);
+                    sw.WriteLine("EnableJigCheck=" + m.EnableJigCheck);
+                    sw.WriteLine("EnableOuterTiltCheck=" + m.EnableOuterTiltCheck);
+                    sw.WriteLine("EnableHoleCheck=" + m.EnableHoleCheck);
 
                     sw.WriteLine("TriggerOnBright=" + _triggerOnBright); sw.WriteLine("TriggerThreshold=" + _triggerThreshold);
                     sw.WriteLine("StabilityDurationMs=" + _stabilityDurationMs);
@@ -1005,33 +997,33 @@ namespace _20260224SolderInspec
                     sw.WriteLine("SaveRoiX=" + _saveRoi.X); sw.WriteLine("SaveRoiY=" + _saveRoi.Y); sw.WriteLine("SaveRoiW=" + _saveRoi.Width); sw.WriteLine("SaveRoiH=" + _saveRoi.Height);
                     sw.WriteLine("LogKeepDays=" + _logKeepDays);
 
-                    sw.WriteLine("TiltLX=" + _measurement.TiltLeftRoi.X); sw.WriteLine("TiltLY=" + _measurement.TiltLeftRoi.Y); sw.WriteLine("TiltLW=" + _measurement.TiltLeftRoi.Width); sw.WriteLine("TiltLH=" + _measurement.TiltLeftRoi.Height);
-                    sw.WriteLine("TiltRX=" + _measurement.TiltRightRoi.X); sw.WriteLine("TiltRY=" + _measurement.TiltRightRoi.Y); sw.WriteLine("TiltRW=" + _measurement.TiltRightRoi.Width); sw.WriteLine("TiltRH=" + _measurement.TiltRightRoi.Height);
-                    sw.WriteLine("ThreshOuterL=" + _measurement.ThreshOuterL); sw.WriteLine("ThreshOuterR=" + _measurement.ThreshOuterR);
+                    sw.WriteLine("TiltLX=" + m.TiltLeftRoi.X); sw.WriteLine("TiltLY=" + m.TiltLeftRoi.Y); sw.WriteLine("TiltLW=" + m.TiltLeftRoi.Width); sw.WriteLine("TiltLH=" + m.TiltLeftRoi.Height);
+                    sw.WriteLine("TiltRX=" + m.TiltRightRoi.X); sw.WriteLine("TiltRY=" + m.TiltRightRoi.Y); sw.WriteLine("TiltRW=" + m.TiltRightRoi.Width); sw.WriteLine("TiltRH=" + m.TiltRightRoi.Height);
+                    sw.WriteLine("ThreshOuterL=" + m.ThreshOuterL); sw.WriteLine("ThreshOuterR=" + m.ThreshOuterR);
 
-                    sw.WriteLine("ThreshBtmInnerL=" + _measurement.ThreshBtmInnerL); sw.WriteLine("ThreshBtmInnerR=" + _measurement.ThreshBtmInnerR);
+                    sw.WriteLine("ThreshBtmInnerL=" + m.ThreshBtmInnerL); sw.WriteLine("ThreshBtmInnerR=" + m.ThreshBtmInnerR);
 
-                    sw.WriteLine("TargetOuterXOffsetMm=" + _measurement.TargetOuterXOffsetMm); sw.WriteLine("OuterOffsetToleranceMm=" + _measurement.OuterOffsetToleranceMm);
-                    sw.WriteLine("TargetOuterAngleDeg=" + _measurement.TargetOuterAngleDeg); sw.WriteLine("OuterAngleToleranceDeg=" + _measurement.OuterAngleToleranceDeg);
+                    sw.WriteLine("TargetOuterXOffsetMm=" + m.TargetOuterXOffsetMm); sw.WriteLine("OuterOffsetToleranceMm=" + m.OuterOffsetToleranceMm);
+                    sw.WriteLine("TargetOuterAngleDeg=" + m.TargetOuterAngleDeg); sw.WriteLine("OuterAngleToleranceDeg=" + m.OuterAngleToleranceDeg);
 
-                    sw.WriteLine("BtmRoiX=" + _measurement.BtmMeasureRoi.X); sw.WriteLine("BtmRoiY=" + _measurement.BtmMeasureRoi.Y); sw.WriteLine("BtmRoiW=" + _measurement.BtmMeasureRoi.Width); sw.WriteLine("BtmRoiH=" + _measurement.BtmMeasureRoi.Height);
-                    sw.WriteLine("BtmInnerLX=" + _measurement.BtmInnerLeftRoi.X); sw.WriteLine("BtmInnerLY=" + _measurement.BtmInnerLeftRoi.Y); sw.WriteLine("BtmInnerLW=" + _measurement.BtmInnerLeftRoi.Width); sw.WriteLine("BtmInnerLH=" + _measurement.BtmInnerLeftRoi.Height);
-                    sw.WriteLine("BtmInnerRX=" + _measurement.BtmInnerRightRoi.X); sw.WriteLine("BtmInnerRY=" + _measurement.BtmInnerRightRoi.Y); sw.WriteLine("BtmInnerRW=" + _measurement.BtmInnerRightRoi.Width); sw.WriteLine("BtmInnerRH=" + _measurement.BtmInnerRightRoi.Height);
+                    sw.WriteLine("BtmRoiX=" + m.BtmMeasureRoi.X); sw.WriteLine("BtmRoiY=" + m.BtmMeasureRoi.Y); sw.WriteLine("BtmRoiW=" + m.BtmMeasureRoi.Width); sw.WriteLine("BtmRoiH=" + m.BtmMeasureRoi.Height);
+                    sw.WriteLine("BtmInnerLX=" + m.BtmInnerLeftRoi.X); sw.WriteLine("BtmInnerLY=" + m.BtmInnerLeftRoi.Y); sw.WriteLine("BtmInnerLW=" + m.BtmInnerLeftRoi.Width); sw.WriteLine("BtmInnerLH=" + m.BtmInnerLeftRoi.Height);
+                    sw.WriteLine("BtmInnerRX=" + m.BtmInnerRightRoi.X); sw.WriteLine("BtmInnerRY=" + m.BtmInnerRightRoi.Y); sw.WriteLine("BtmInnerRW=" + m.BtmInnerRightRoi.Width); sw.WriteLine("BtmInnerRH=" + m.BtmInnerRightRoi.Height);
 
-                    sw.WriteLine("HolesX=" + _measurement.HolesRoi.X); sw.WriteLine("HolesY=" + _measurement.HolesRoi.Y); sw.WriteLine("HolesW=" + _measurement.HolesRoi.Width); sw.WriteLine("HolesH=" + _measurement.HolesRoi.Height);
-                    sw.WriteLine("MinHoleArea=" + _measurement.MinHoleArea); sw.WriteLine("MaxHoleArea=" + _measurement.MaxHoleArea);
-                    sw.WriteLine("MinCirc=" + _measurement.MinCircularity);
-                    sw.WriteLine("SplitBoundaryX=" + _measurement.SplitBoundaryX); sw.WriteLine("SplitBoundaryY=" + _measurement.SplitBoundaryY);
-                    sw.WriteLine("ThreshTL=" + _measurement.ThreshTopLeft); sw.WriteLine("ThreshTR=" + _measurement.ThreshTopRight);
-                    sw.WriteLine("ThreshBL=" + _measurement.ThreshBtmLeft); sw.WriteLine("ThreshBR=" + _measurement.ThreshBtmRight);
+                    sw.WriteLine("HolesX=" + m.HolesRoi.X); sw.WriteLine("HolesY=" + m.HolesRoi.Y); sw.WriteLine("HolesW=" + m.HolesRoi.Width); sw.WriteLine("HolesH=" + m.HolesRoi.Height);
+                    sw.WriteLine("MinHoleArea=" + m.MinHoleArea); sw.WriteLine("MaxHoleArea=" + m.MaxHoleArea);
+                    sw.WriteLine("MinCirc=" + m.MinCircularity);
+                    sw.WriteLine("SplitBoundaryX=" + m.SplitBoundaryX); sw.WriteLine("SplitBoundaryY=" + m.SplitBoundaryY);
+                    sw.WriteLine("ThreshTL=" + m.ThreshTopLeft); sw.WriteLine("ThreshTR=" + m.ThreshTopRight);
+                    sw.WriteLine("ThreshBL=" + m.ThreshBtmLeft); sw.WriteLine("ThreshBR=" + m.ThreshBtmRight);
 
-                    sw.WriteLine("JigLX=" + _measurement.JigLeftRoi.X); sw.WriteLine("JigLY=" + _measurement.JigLeftRoi.Y); sw.WriteLine("JigLW=" + _measurement.JigLeftRoi.Width); sw.WriteLine("JigLH=" + _measurement.JigLeftRoi.Height);
-                    sw.WriteLine("JigRX=" + _measurement.JigRightRoi.X); sw.WriteLine("JigRY=" + _measurement.JigRightRoi.Y); sw.WriteLine("JigRW=" + _measurement.JigRightRoi.Width); sw.WriteLine("JigRH=" + _measurement.JigRightRoi.Height);
+                    sw.WriteLine("JigLX=" + m.JigLeftRoi.X); sw.WriteLine("JigLY=" + m.JigLeftRoi.Y); sw.WriteLine("JigLW=" + m.JigLeftRoi.Width); sw.WriteLine("JigLH=" + m.JigLeftRoi.Height);
+                    sw.WriteLine("JigRX=" + m.JigRightRoi.X); sw.WriteLine("JigRY=" + m.JigRightRoi.Y); sw.WriteLine("JigRW=" + m.JigRightRoi.Width); sw.WriteLine("JigRH=" + m.JigRightRoi.Height);
 
-                    sw.WriteLine("JigTargetMm=" + _measurement.TargetJigDistanceMm); sw.WriteLine("JigTolMm=" + _measurement.JigToleranceMm);
-                    sw.WriteLine("PixelToMmRatio=" + _measurement.PixelToMmRatio);
-                    sw.WriteLine("TargetXOffsetMm=" + _measurement.TargetXOffsetMm); sw.WriteLine("OffsetToleranceMm=" + _measurement.OffsetToleranceMm);
-                    sw.WriteLine("TargetAngleDeg=" + _measurement.TargetAngleDeg); sw.WriteLine("AngleToleranceDeg=" + _measurement.AngleToleranceDeg);
+                    sw.WriteLine("JigTargetMm=" + m.TargetJigDistanceMm); sw.WriteLine("JigTolMm=" + m.JigToleranceMm);
+                    sw.WriteLine("PixelToMmRatio=" + m.PixelToMmRatio);
+                    sw.WriteLine("TargetXOffsetMm=" + m.TargetXOffsetMm); sw.WriteLine("OffsetToleranceMm=" + m.OffsetToleranceMm);
+                    sw.WriteLine("TargetAngleDeg=" + m.TargetAngleDeg); sw.WriteLine("AngleToleranceDeg=" + m.AngleToleranceDeg);
                 }
             }
             catch (Exception ex) { MessageBox.Show("設定ファイルの保存に失敗しました。\n\n" + ex.Message, "保存エラー", MessageBoxButtons.OK, MessageBoxIcon.Error); }
