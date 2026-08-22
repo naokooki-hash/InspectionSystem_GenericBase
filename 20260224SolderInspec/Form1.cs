@@ -28,73 +28,73 @@ namespace _20260224SolderInspec
         private ProductionAnalyzer _analyzer = new ProductionAnalyzer();
 
         private PictureBox[] _pictureBoxes = new PictureBox[2];
-        private PictureBox _pictureBoxDebug;
-        private TabControl _tabControl;
-        private TextBox _txtLog;
+        private PictureBox _pictureBoxDebug = null!;
+        private TabControl _tabControl = null!;
+        private TextBox _txtLog = null!;
 
         private Label[] _lblStatuses = new Label[2];
         private Label[] _lblBrightnesses = new Label[2];
         private Label[] _lblFpsList = new Label[2];
         private Label[] _lblBigResults = new Label[2];
-        private Label _lblTotal, _lblOk, _lblNg, _lblCurrentHoleDistPx;
+        private Label _lblTotal = null!, _lblOk = null!, _lblNg = null!, _lblCurrentHoleDistPx = null!;
 
-        private CheckBox _chkShowOverlay, _chkEnableJigCheck;
-        private CheckBox _chkEnableOuterTiltCheck, _chkEnableHoleCheck;
+        private CheckBox _chkShowOverlay = null!, _chkEnableJigCheck = null!;
+        private CheckBox _chkEnableOuterTiltCheck = null!, _chkEnableHoleCheck = null!;
 
-        private ComboBox _cmbTriggerMode, _cmbSaveMode;
+        private ComboBox _cmbTriggerMode = null!, _cmbSaveMode = null!;
 
-        private Button _btnRunToggle;
+        private Button _btnRunToggle = null!;
         private bool _isRunning = false;
         private bool[] _requestErrorTests = new bool[2];
         private bool[] _requestOkTests = new bool[2]; // ★テスト用: 強制OKフラグ
 
-        private NumericUpDown _nudTriggerThreshold, _nudStabilityDuration, _nudResetThreshold;
-        private NumericUpDown _nudRoiX, _nudRoiY, _nudRoiW, _nudRoiH;
-        private NumericUpDown _nudSaveRoiX, _nudSaveRoiY, _nudSaveRoiW, _nudSaveRoiH;
+        private NumericUpDown _nudTriggerThreshold = null!, _nudStabilityDuration = null!, _nudResetThreshold = null!;
+        private NumericUpDown _nudRoiX = null!, _nudRoiY = null!, _nudRoiW = null!, _nudRoiH = null!;
+        private NumericUpDown _nudSaveRoiX = null!, _nudSaveRoiY = null!, _nudSaveRoiW = null!, _nudSaveRoiH = null!;
 
-        private NumericUpDown _nudLogKeepDays;
+        private NumericUpDown _nudLogKeepDays = null!;
         private int _logKeepDays = 30;
 
-        private NumericUpDown _nudAutoStartCount;
+        private NumericUpDown _nudAutoStartCount = null!;
         private int _autoStartCount = 3;
         private int _missedTriggerCount = 0;
         private bool[] _wasTriggeredLastFrames = new bool[2];
 
-        private NumericUpDown _nudBtmRoiX, _nudBtmRoiY, _nudBtmRoiW, _nudBtmRoiH;
+        private NumericUpDown _nudBtmRoiX = null!, _nudBtmRoiY = null!, _nudBtmRoiW = null!, _nudBtmRoiH = null!;
 
-        private NumericUpDown _nudBtmInnerLX, _nudBtmInnerLY, _nudBtmInnerLW, _nudBtmInnerLH;
-        private NumericUpDown _nudBtmInnerRX, _nudBtmInnerRY, _nudBtmInnerRW, _nudBtmInnerRH;
+        private NumericUpDown _nudBtmInnerLX = null!, _nudBtmInnerLY = null!, _nudBtmInnerLW = null!, _nudBtmInnerLH = null!;
+        private NumericUpDown _nudBtmInnerRX = null!, _nudBtmInnerRY = null!, _nudBtmInnerRW = null!, _nudBtmInnerRH = null!;
 
-        private NumericUpDown _nudHolesX, _nudHolesY, _nudHolesW, _nudHolesH;
-        private NumericUpDown _nudMinHoleArea, _nudMaxHoleArea, _nudMinCircularity;
+        private NumericUpDown _nudHolesX = null!, _nudHolesY = null!, _nudHolesW = null!, _nudHolesH = null!;
+        private NumericUpDown _nudMinHoleArea = null!, _nudMaxHoleArea = null!, _nudMinCircularity = null!;
 
-        private NumericUpDown _nudTiltLX, _nudTiltLY, _nudTiltLW, _nudTiltLH;
-        private NumericUpDown _nudTiltRX, _nudTiltRY, _nudTiltRW, _nudTiltRH;
+        private NumericUpDown _nudTiltLX = null!, _nudTiltLY = null!, _nudTiltLW = null!, _nudTiltLH = null!;
+        private NumericUpDown _nudTiltRX = null!, _nudTiltRY = null!, _nudTiltRW = null!, _nudTiltRH = null!;
 
-        private NumericUpDown _nudThreshOuterL, _nudThreshOuterR;
-        private NumericUpDown _nudThreshBtmInnerL, _nudThreshBtmInnerR;
+        private NumericUpDown _nudThreshOuterL = null!, _nudThreshOuterR = null!;
+        private NumericUpDown _nudThreshBtmInnerL = null!, _nudThreshBtmInnerR = null!;
 
-        private NumericUpDown _nudSplitX, _nudSplitY;
-        private NumericUpDown _nudThreshTL, _nudThreshTR, _nudThreshBL, _nudThreshBR;
+        private NumericUpDown _nudSplitX = null!, _nudSplitY = null!;
+        private NumericUpDown _nudThreshTL = null!, _nudThreshTR = null!, _nudThreshBL = null!, _nudThreshBR = null!;
 
-        private NumericUpDown _nudJigLX, _nudJigLY, _nudJigLW, _nudJigLH;
-        private NumericUpDown _nudJigRX, _nudJigRY, _nudJigRW, _nudJigRH;
-        private NumericUpDown _nudJigTarget, _nudJigTolerance, _nudPixelToMm;
+        private NumericUpDown _nudJigLX = null!, _nudJigLY = null!, _nudJigLW = null!, _nudJigLH = null!;
+        private NumericUpDown _nudJigRX = null!, _nudJigRY = null!, _nudJigRW = null!, _nudJigRH = null!;
+        private NumericUpDown _nudJigTarget = null!, _nudJigTolerance = null!, _nudPixelToMm = null!;
 
-        private NumericUpDown _nudOuterTargetX, _nudOuterOffsetX, _nudOuterTargetA, _nudOuterOffsetA;
-        private NumericUpDown _nudTargetXOffset, _nudOffsetTolerance, _nudTargetAngle, _nudAngleTolerance;
-        private NumericUpDown _nudActualWidthMm;
+        private NumericUpDown _nudOuterTargetX = null!, _nudOuterOffsetX = null!, _nudOuterTargetA = null!, _nudOuterOffsetA = null!;
+        private NumericUpDown _nudTargetXOffset = null!, _nudOffsetTolerance = null!, _nudTargetAngle = null!, _nudAngleTolerance = null!;
+        private NumericUpDown _nudActualWidthMm = null!;
 
-        private NumericUpDown _nudPlcDelayMs;
+        private NumericUpDown _nudPlcDelayMs = null!;
         private int _plcDelayMs = 100;
 
-        private NumericUpDown _nudRetryCount;
-        private NumericUpDown _nudRetryDelayMs;
+        private NumericUpDown _nudRetryCount = null!;
+        private NumericUpDown _nudRetryDelayMs = null!;
         private int _maxRetryCount = 3;
         private int _retryDelayMs = 100;
-        private int _currentRetry = 0;
+        private int[] _currentRetries = new int[2] { 0, 0 };
 
-        private Button _btnCalcRatio;
+        private Button _btnCalcRatio = null!;
 
         private int[] _currentStates = new int[] { STATE_WAITING, STATE_WAITING };
         private DateTime[] _stabilityStartTimes = new DateTime[2];
@@ -110,9 +110,13 @@ namespace _20260224SolderInspec
         private bool _isMonitoring = false;
         private bool[] _plcTriggerReceived = new bool[2];
 
+        // 各カメラの本来の検査設定（フォールバック復元用）
+        private bool[] _configEnableOuterTilt = new bool[2] { true, true };
+        private bool[] _configEnableHole = new bool[2] { true, true };
+
         private int _selectedCamIndex = 0;
-        private ComboBox _cmbInspectionCam;
-        private ComboBox _cmbDebugCam;
+        private ComboBox _cmbInspectionCam = null!;
+        private ComboBox _cmbDebugCam = null!;
         private bool _isUpdatingUI = false;
 
         private int _totalCount = 0, _okCount = 0, _ngCount = 0, _saveMode = 0, _stabilityDurationMs = 300;
@@ -216,13 +220,13 @@ namespace _20260224SolderInspec
             ComboBox cmbVendor = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), DropDownStyle = ComboBoxStyle.DropDownList };
             cmbVendor.Items.AddRange(new object[] { "Mitsubishi", "Keyence" });
             cmbVendor.SelectedItem = _appSettings.PlcVendor;
-            cmbVendor.SelectedIndexChanged += (s, e) => { _appSettings.PlcVendor = cmbVendor.SelectedItem.ToString(); }; tab.Controls.Add(cmbVendor); y += lh;
+            cmbVendor.SelectedIndexChanged += (s, e) => { _appSettings.PlcVendor = cmbVendor.SelectedItem?.ToString() ?? "Mitsubishi"; }; tab.Controls.Add(cmbVendor); y += lh;
 
             AddL("データ型:");
             ComboBox cmbDataType = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), DropDownStyle = ComboBoxStyle.DropDownList };
             cmbDataType.Items.AddRange(new object[] { "Bit", "Word" });
             cmbDataType.SelectedItem = _appSettings.PlcDataType;
-            cmbDataType.SelectedIndexChanged += (s, e) => { _appSettings.PlcDataType = cmbDataType.SelectedItem.ToString(); }; tab.Controls.Add(cmbDataType); y += lh;
+            cmbDataType.SelectedIndexChanged += (s, e) => { _appSettings.PlcDataType = cmbDataType.SelectedItem?.ToString() ?? "Bit"; }; tab.Controls.Add(cmbDataType); y += lh;
             y += 10;
 
             tab.Controls.Add(new Label { Text = "--- デバイスアドレス設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
@@ -547,7 +551,7 @@ namespace _20260224SolderInspec
             AddN("右下 (BR) 閾値:", ref _nudThreshBR, 0, 255, m.ThreshBtmRight, 0, 1M);
         }
 
-        private void Form1_Load(object sender, EventArgs e)
+        private void Form1_Load(object? sender, EventArgs e)
         {
             _isUiLoaded = true;
             if (_cameras[0].Initialize(0)) _cameras[0].StartCapture();
@@ -557,7 +561,7 @@ namespace _20260224SolderInspec
             RestoreDailyCounter();
         }
 
-        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
             _isMonitoring = false; _isUiLoaded = false;
             _cameras[0].StopCapture(); _cameras[0].Dispose();
@@ -665,9 +669,14 @@ namespace _20260224SolderInspec
         private void SafeInvoke(Action action) { if (!_isUiLoaded || this.IsDisposed || !this.IsHandleCreated || this.Disposing) return; try { this.Invoke(new MethodInvoker(action)); } catch { } }
         private void SafeBeginInvoke(Action action) { if (!_isUiLoaded || this.IsDisposed || !this.IsHandleCreated || this.Disposing) return; try { this.BeginInvoke(new MethodInvoker(action)); } catch { } }
 
-        private void Camera_OnFrameCaptured(object sender, Mat frame, int camIndex)
+        private void Camera_OnFrameCaptured(object? sender, Mat frame, int camIndex)
         {
-            if (!_isUiLoaded || this.IsDisposed || frame == null || frame.Empty()) return;
+            if (frame == null || frame.Empty()) return;
+            if (!_isUiLoaded || this.IsDisposed || this.Disposing)
+            {
+                frame.Dispose();
+                return;
+            }
 
             _camFrameCounts[camIndex]++;
             if ((DateTime.Now - _lastFpsTime).TotalMilliseconds >= 1000) {
@@ -678,17 +687,31 @@ namespace _20260224SolderInspec
                 _lastFpsTime = DateTime.Now;
             }
 
-            double limitMs = 33.0; if (!_isRunning && _autoStartCount == 0) limitMs = 200.0; else if (_appSettings.TriggerMode == "Plc" && !_isRunning) limitMs = 200.0;
+            double limitMs = 33.0;
+            if (!_isRunning && _autoStartCount == 0) limitMs = 200.0;
+            else if (_appSettings.TriggerMode == "Plc" && !_isRunning) limitMs = 200.0;
 
             bool hasForceAction = _plcTriggerReceived[camIndex] || _requestManualTests[camIndex] || _requestErrorTests[camIndex] || _requestOkTests[camIndex] || _pendingSaveResults[camIndex] != -1;
-            if (!hasForceAction && (DateTime.Now - _lastFrameProcessTimes[camIndex]).TotalMilliseconds < limitMs) { frame.Dispose(); return; }
-            if (_isProcessing[camIndex]) { frame.Dispose(); return; }
-            _isProcessing[camIndex] = true; _lastFrameProcessTimes[camIndex] = DateTime.Now;
+            if (!hasForceAction && (DateTime.Now - _lastFrameProcessTimes[camIndex]).TotalMilliseconds < limitMs)
+            {
+                frame.Dispose();
+                return;
+            }
+            if (_isProcessing[camIndex])
+            {
+                frame.Dispose();
+                return;
+            }
+            _isProcessing[camIndex] = true;
+            _lastFrameProcessTimes[camIndex] = DateTime.Now;
 
             Task.Run(() => {
+                bool frameDisposed = false;
                 try
                 {
-                    _procFrameCounts[camIndex]++; bool isDebug = _isDebugTabActive && camIndex == _selectedCamIndex; double b = 0;
+                    _procFrameCounts[camIndex]++;
+                    bool isDebug = _isDebugTabActive && camIndex == _selectedCamIndex;
+                    double b = 0;
                     if (_appSettings.TriggerMode == "Visual" || _isRunning || _autoStartCount > 0)
                         b = _measurements[camIndex].CalculateBrightness(frame, _roi);
 
@@ -737,16 +760,30 @@ namespace _20260224SolderInspec
                     if (_pendingSaveResults[camIndex] != -1) forceUiUpdate = true;
                     double uiLimitMs = _isRunning ? 66.0 : 200.0;
 
-                    if (forceUiUpdate || (DateTime.Now - _lastUiUpdateTimes[camIndex]).TotalMilliseconds > uiLimitMs) {
+                    if ((forceUiUpdate || (DateTime.Now - _lastUiUpdateTimes[camIndex]).TotalMilliseconds > uiLimitMs) && _isUiLoaded && !this.IsDisposed && !this.Disposing && this.IsHandleCreated) {
                         _lastUiUpdateTimes[camIndex] = DateTime.Now;
+                        frameDisposed = true;
                         SafeBeginInvoke(() => {
-                            _uiFrameCounts[camIndex]++;
-                            UpdateUIDisplay(camIndex, frame, b, isDebug);
-                            frame.Dispose(); _isProcessing[camIndex] = false;
+                            try {
+                                _uiFrameCounts[camIndex]++;
+                                UpdateUIDisplay(camIndex, frame, b, isDebug);
+                            }
+                            finally {
+                                if (frame != null && !frame.IsDisposed) frame.Dispose();
+                                _isProcessing[camIndex] = false;
+                            }
                         });
-                    } else { frame.Dispose(); _isProcessing[camIndex] = false; }
+                    } else {
+                        frame.Dispose();
+                        frameDisposed = true;
+                        _isProcessing[camIndex] = false;
+                    }
                 }
-                catch { if (frame != null && !frame.IsDisposed) frame.Dispose(); _isProcessing[camIndex] = false; }
+                catch
+                {
+                    if (!frameDisposed && frame != null && !frame.IsDisposed) frame.Dispose();
+                    _isProcessing[camIndex] = false;
+                }
             });
         }
 
@@ -794,9 +831,10 @@ namespace _20260224SolderInspec
                 case STATE_WAITING:
                     if (rawTriggered)
                     {
-                        _currentRetry = 0;
-                        if (_chkEnableOuterTiltCheck != null) _measurements[camIndex].EnableOuterTiltCheck = _chkEnableOuterTiltCheck.Checked;
-                        if (_chkEnableHoleCheck != null) _measurements[camIndex].EnableHoleCheck = _chkEnableHoleCheck.Checked;
+                        _currentRetries[camIndex] = 0;
+                        // 本来の設定を復元
+                        _measurements[camIndex].EnableOuterTiltCheck = _configEnableOuterTilt[camIndex];
+                        _measurements[camIndex].EnableHoleCheck = _configEnableHole[camIndex];
 
                         AppendLog($"Cam{camIndex+1}: 検査開始のため前回の判定出力をクリア");
                         Task.Run(() => {
@@ -817,20 +855,30 @@ namespace _20260224SolderInspec
                 case STATE_STABILIZING:
                     if (_appSettings.TriggerMode == "Plc")
                     {
-                        double targetDelay = _currentRetry == 0 ? _plcDelayMs : _retryDelayMs;
+                        double targetDelay = _currentRetries[camIndex] == 0 ? _plcDelayMs : _retryDelayMs;
                         if ((DateTime.Now - _stabilityStartTimes[camIndex]).TotalMilliseconds > targetDelay)
                         {
                             int inspectResult = _measurements[camIndex].Inspect(frame, _saveRoi, isDebug);
 
-                            if (inspectResult != 1 && _currentRetry >= _maxRetryCount && _measurements[camIndex].EnableOuterTiltCheck && !_measurements[camIndex].EnableHoleCheck)
+                            if (inspectResult != 1 && _currentRetries[camIndex] >= _maxRetryCount && _measurements[camIndex].EnableOuterTiltCheck && !_measurements[camIndex].EnableHoleCheck)
                             {
                                 _measurements[camIndex].EnableOuterTiltCheck = false; _measurements[camIndex].EnableHoleCheck = true;
                                 inspectResult = _measurements[camIndex].Inspect(frame, _saveRoi, isDebug);
                                 SafeInvoke(() => lblStateUpdate(camIndex, "FALLBACK HOLE...", Color.Orange));
                             }
 
-                            if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(camIndex, inspectResult, b); _currentStates[camIndex] = STATE_COOLING; _cooldownStartTimes[camIndex] = DateTime.Now; }
-                            else { _currentRetry++; _stabilityStartTimes[camIndex] = DateTime.Now; SafeInvoke(() => lblStateUpdate(camIndex, $"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange)); }
+                            if (inspectResult == 1 || _currentRetries[camIndex] >= _maxRetryCount)
+                            {
+                                ProcessInspectionResult(camIndex, inspectResult, b);
+                                _currentStates[camIndex] = STATE_COOLING;
+                                _cooldownStartTimes[camIndex] = DateTime.Now;
+                            }
+                            else
+                            {
+                                _currentRetries[camIndex]++;
+                                _stabilityStartTimes[camIndex] = DateTime.Now;
+                                SafeInvoke(() => lblStateUpdate(camIndex, $"RETRY {_currentRetries[camIndex]}/{_maxRetryCount}", Color.Orange));
+                            }
                         }
                     }
                     else
@@ -838,20 +886,30 @@ namespace _20260224SolderInspec
                         if (isReset) { _currentStates[camIndex] = STATE_WAITING; SafeInvoke(() => lblStateUpdate(camIndex, "READY", Color.LightGray)); }
                         else
                         {
-                            double targetDelay = _currentRetry == 0 ? _stabilityDurationMs : _retryDelayMs;
+                            double targetDelay = _currentRetries[camIndex] == 0 ? _stabilityDurationMs : _retryDelayMs;
                             if ((DateTime.Now - _stabilityStartTimes[camIndex]).TotalMilliseconds > targetDelay)
                             {
                                 int inspectResult = _measurements[camIndex].Inspect(frame, _saveRoi, isDebug);
 
-                                if (inspectResult != 1 && _currentRetry >= _maxRetryCount && _measurements[camIndex].EnableOuterTiltCheck && !_measurements[camIndex].EnableHoleCheck)
+                                if (inspectResult != 1 && _currentRetries[camIndex] >= _maxRetryCount && _measurements[camIndex].EnableOuterTiltCheck && !_measurements[camIndex].EnableHoleCheck)
                                 {
                                     _measurements[camIndex].EnableOuterTiltCheck = false; _measurements[camIndex].EnableHoleCheck = true;
                                     inspectResult = _measurements[camIndex].Inspect(frame, _saveRoi, isDebug);
                                     SafeInvoke(() => lblStateUpdate(camIndex, "FALLBACK HOLE...", Color.Orange));
                                 }
 
-                                if (inspectResult == 1 || _currentRetry >= _maxRetryCount) { ProcessInspectionResult(camIndex, inspectResult, b); _currentStates[camIndex] = STATE_COOLING; _cooldownStartTimes[camIndex] = DateTime.Now; }
-                                else { _currentRetry++; _stabilityStartTimes[camIndex] = DateTime.Now; SafeInvoke(() => lblStateUpdate(camIndex, $"RETRY {_currentRetry}/{_maxRetryCount}", Color.Orange)); }
+                                if (inspectResult == 1 || _currentRetries[camIndex] >= _maxRetryCount)
+                                {
+                                    ProcessInspectionResult(camIndex, inspectResult, b);
+                                    _currentStates[camIndex] = STATE_COOLING;
+                                    _cooldownStartTimes[camIndex] = DateTime.Now;
+                                }
+                                else
+                                {
+                                    _currentRetries[camIndex]++;
+                                    _stabilityStartTimes[camIndex] = DateTime.Now;
+                                    SafeInvoke(() => lblStateUpdate(camIndex, $"RETRY {_currentRetries[camIndex]}/{_maxRetryCount}", Color.Orange));
+                                }
                             }
                         }
                     }
@@ -889,6 +947,10 @@ namespace _20260224SolderInspec
             // ★分析モジュールへの登録処理
             double lastAngle = _measurements[camIndex].LastOuterAngleDeg;
             _analyzer.AddRecord(lastAngle, brightness, isOk, _logDirPath);
+
+            // フォールバックしていた場合に備えて本来の設定を復元
+            _measurements[camIndex].EnableOuterTiltCheck = _configEnableOuterTilt[camIndex];
+            _measurements[camIndex].EnableHoleCheck = _configEnableHole[camIndex];
         }
 
         private void UpdateUIDisplay(int camIndex, Mat frame, double b, bool isDebug)
@@ -915,9 +977,9 @@ namespace _20260224SolderInspec
                 }
 
                 if (_pendingSaveResults[camIndex] != -1) { if (_saveMode == 2 || (_saveMode == 1 && _pendingSaveResults[camIndex] != 1)) SaveInspectionImage(disp, _pendingSaveResults[camIndex]); _pendingSaveResults[camIndex] = -1; }
-                Bitmap bmp = BitmapConverter.ToBitmap(disp); Image old = _pictureBoxes[camIndex].Image; _pictureBoxes[camIndex].Image = bmp; old?.Dispose();
+                Bitmap bmp = BitmapConverter.ToBitmap(disp); Image? old = _pictureBoxes[camIndex].Image; _pictureBoxes[camIndex].Image = bmp; old?.Dispose();
             }
-            if (isDebug && camIndex == _selectedCamIndex) { using (Mat binImg = new Mat()) { _measurements[camIndex].GetDebugImage(binImg); if (!binImg.Empty()) { Bitmap bmpD = BitmapConverter.ToBitmap(binImg); Image oldD = _pictureBoxDebug.Image; _pictureBoxDebug.Image = bmpD; oldD?.Dispose(); } } }
+            if (isDebug && camIndex == _selectedCamIndex) { using (Mat binImg = new Mat()) { _measurements[camIndex].GetDebugImage(binImg); if (!binImg.Empty()) { Bitmap bmpD = BitmapConverter.ToBitmap(binImg); Image? oldD = _pictureBoxDebug.Image; _pictureBoxDebug.Image = bmpD; oldD?.Dispose(); } } }
             if (_lblCurrentHoleDistPx != null && !_lblCurrentHoleDistPx.IsDisposed && _measurements[camIndex].LastHoleDistancePx > 0 && camIndex == _selectedCamIndex) _lblCurrentHoleDistPx.Text = "現在の穴/エッジ間距離: " + _measurements[camIndex].LastHoleDistancePx.ToString("F1") + " px";
 
             if (_lblStatuses[camIndex] != null && !_lblStatuses[camIndex].IsDisposed) {
@@ -957,8 +1019,16 @@ namespace _20260224SolderInspec
             if (m == null) return;
 
             if (_chkEnableJigCheck != null) m.EnableJigCheck = _chkEnableJigCheck.Checked;
-            if (_chkEnableOuterTiltCheck != null) m.EnableOuterTiltCheck = _chkEnableOuterTiltCheck.Checked;
-            if (_chkEnableHoleCheck != null) m.EnableHoleCheck = _chkEnableHoleCheck.Checked;
+            if (_chkEnableOuterTiltCheck != null)
+            {
+                m.EnableOuterTiltCheck = _chkEnableOuterTiltCheck.Checked;
+                _configEnableOuterTilt[_selectedCamIndex] = _chkEnableOuterTiltCheck.Checked;
+            }
+            if (_chkEnableHoleCheck != null)
+            {
+                m.EnableHoleCheck = _chkEnableHoleCheck.Checked;
+                _configEnableHole[_selectedCamIndex] = _chkEnableHoleCheck.Checked;
+            }
 
             m.TiltLeftRoi = new CvRect((int)_nudTiltLX.Value, (int)_nudTiltLY.Value, (int)_nudTiltLW.Value, (int)_nudTiltLH.Value);
             m.TiltRightRoi = new CvRect((int)_nudTiltRX.Value, (int)_nudTiltRY.Value, (int)_nudTiltRW.Value, (int)_nudTiltRH.Value);
@@ -1122,6 +1192,8 @@ namespace _20260224SolderInspec
                     m.EnableJigCheck = enableJigCheck;
                     m.EnableOuterTiltCheck = enableOuterTiltCheck;
                     m.EnableHoleCheck = enableHoleCheck;
+                    _configEnableOuterTilt[c] = enableOuterTiltCheck;
+                    _configEnableHole[c] = enableHoleCheck;
 
                     int GetCamI(string key, int defVal) => d.ContainsKey(pfx + key) ? GetI(pfx + key, defVal) : GetI(key, defVal);
                     double GetCamD(string key, double defVal) => d.ContainsKey(pfx + key) ? GetD(pfx + key, defVal) : GetD(key, defVal);

@@ -7,11 +7,11 @@ namespace _20260224SolderInspec
 {
     public class PlcCommunicator
     {
-        private TcpClient _client;
-        private NetworkStream _stream;
+        private TcpClient? _client;
+        private NetworkStream? _stream;
         private AppSettings _settings;
         private readonly SemaphoreSlim _tcpLock = new SemaphoreSlim(1, 1);
-        private CancellationTokenSource _heartbeatCts;
+        private CancellationTokenSource? _heartbeatCts;
 
         public event Action<string, bool>? OnLog;
 
@@ -110,7 +110,7 @@ namespace _20260224SolderInspec
 
         public int ReadDevice(int deviceAddress)
         {
-            if (!IsConnected) return -1;
+            if (!IsConnected || _stream == null) return -1;
 
             _tcpLock.Wait();
             try
@@ -195,7 +195,7 @@ namespace _20260224SolderInspec
 
         public bool WriteDevice(int deviceAddress, int writeValue)
         {
-            if (!IsConnected) return false;
+            if (!IsConnected || _stream == null) return false;
 
             _tcpLock.Wait();
             try

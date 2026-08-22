@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Windows.Forms;
 using ScottPlot;
@@ -14,9 +14,9 @@ namespace _20260224SolderInspec
     public class FormDashboard : Form
     {
         private ProductionAnalyzer _analyzer;
-        private TabControl _tabControl;
-        private FormsPlot _plotTact, _plotQualityTrend, _plotQualityHist, _plotEnv;
-        private UI_Label _lblTactSummary, _lblQualitySummary, _lblEnvSummary;
+        private TabControl _tabControl = null!;
+        private FormsPlot _plotTact = null!, _plotQualityTrend = null!, _plotQualityHist = null!, _plotEnv = null!;
+        private UI_Label _lblTactSummary = null!, _lblQualitySummary = null!, _lblEnvSummary = null!;
 
         public FormDashboard(ProductionAnalyzer analyzer)
         {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,8 +13,8 @@ namespace _20260224SolderInspec
             public double CycleTimeSec { get; set; }
             public double TargetValue { get; set; }  // 汎用化: 角度や寸法など
             public double EnvValue { get; set; }     // 汎用化: 輝度や面積など
-            public string Result { get; set; }
-            public string StoppageType { get; set; }
+            public string Result { get; set; } = "OK";
+            public string StoppageType { get; set; } = "正常";
         }
 
         private List<InspectionRecord> _records = new List<InspectionRecord>();

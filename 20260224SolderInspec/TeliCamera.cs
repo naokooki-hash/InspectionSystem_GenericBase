@@ -8,15 +8,15 @@ namespace _20260224SolderInspec
 {
     public class TeliCamera : IDisposable
     {
-        private CameraSystem camSystem;
-        private CameraDevice camDevice;
+        private CameraSystem? camSystem;
+        private CameraDevice? camDevice;
         private AutoResetEvent imageReceivedEvent = new AutoResetEvent(false);
         private int maxPayloadSize = 0;
         private volatile bool keepCapturing = false;
-        private Thread captureThread;
+        private Thread? captureThread;
 
         // 画像処理側へ渡すイベント
-        public event EventHandler<Mat> OnFrameCaptured;
+        public event EventHandler<Mat>? OnFrameCaptured;
 
         public bool IsConnected => camDevice != null;
 
@@ -93,15 +93,15 @@ namespace _20260224SolderInspec
 
         private void CaptureLoop()
         {
-            CameraImageInfo imageInfo = null;
+            CameraImageInfo? imageInfo = null;
             int bufferIndex;
 
-            while (keepCapturing)
+            while (keepCapturing && camDevice != null)
             {
                 // 画像が来るまで待機（1秒タイムアウト）
                 if (imageReceivedEvent.WaitOne(1000))
                 {
-                    if (camDevice.camStream.GetCurrentBufferIndex(out bufferIndex) == CamApiStatus.Success)
+                    if (camDevice != null && camDevice.camStream.GetCurrentBufferIndex(out bufferIndex) == CamApiStatus.Success)
                     {
                         camDevice.camStream.LockBuffer(bufferIndex, ref imageInfo);
 
