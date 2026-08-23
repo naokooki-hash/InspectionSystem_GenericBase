@@ -1,3 +1,4 @@
+#pragma warning disable CS0067
 using System;
 using System.Threading;
 using OpenCvSharp;
@@ -154,6 +155,25 @@ namespace InspectionSystem_GenericBase
                         }
                         camDevice.camStream.UnlockBuffer(bufferIndex);
                     }
+                }
+            }
+#endif
+        }
+
+
+        public void SetExposure(double exposureTimeUs)
+        {
+#if !LINUX
+            if (camDevice != null && camDevice.camControl != null)
+            {
+                try
+                {
+                    camDevice.camControl.SetExposureTimeControl(CameraExposureTimeCtrl.Manual);
+                    camDevice.camControl.SetExposureTime(exposureTimeUs);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to set exposure: {ex.Message}");
                 }
             }
 #endif
