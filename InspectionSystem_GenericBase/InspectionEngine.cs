@@ -5,7 +5,7 @@ namespace InspectionSystem_GenericBase
     /// <summary>
     /// 各種検査処理を行うエンジンの共通インターフェース
     /// </summary>
-    public interface IInspectionEngine
+    public interface InspectionEngine
     {
         /// <summary>
         /// 検査エンジンの識別名

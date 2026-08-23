@@ -11,7 +11,7 @@ using OpenCvSharp.Extensions;
 
 namespace InspectionSystem_GenericBase
 {
-    public class MeasurementCore : IInspectionEngine
+    public class MeasurementCore : InspectionEngine
     {
         public string EngineName => "Punching Metal Inspection Engine";
 

@@ -24,7 +24,7 @@ namespace InspectionSystem_GenericBase
 
         private TeliCamera _camera;
         private MeasurementCore _measurement;
-        private IInspectionEngine _inspectionEngine;
+        private InspectionEngine _inspectionEngine;
         private PlcCommunicator _plc;
         private AppSettings _appSettings;
         private ProductionAnalyzer _analyzer = new ProductionAnalyzer();
