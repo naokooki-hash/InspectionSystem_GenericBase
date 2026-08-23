@@ -556,12 +556,8 @@ namespace InspectionSystem_GenericBase
                 _lastInspectionResult?.Dispose();
                 _lastInspectionResult = res;
 
-                // Update UI stats
-                _totalCount++;
-                if (res.IsOk) _okCount++; else _ngCount++;
-
-                // Save image
-                if (_saveMode == 0 || (_saveMode == 1 && res.IsOk) || (_saveMode == 2 && !res.IsOk))
+                // Save image (0: Do not save, 1: Save NG only, 2: Save all)
+                if (_saveMode == 2 || (_saveMode == 1 && !res.IsOk))
                 {
                     SaveInspectionImage(res);
                 }
@@ -576,7 +572,7 @@ namespace InspectionSystem_GenericBase
                 // UI update
                 double elapsedMs = (DateTime.Now - startTime).TotalMilliseconds;
                 SafeInvoke(() => {
-                    UpdateCounterDisplay();
+                    // UpdateResultDisplay handles counter increment, UI text update, and Daily CSV Log automatically
                     UpdateResultDisplay(res, false, 0);
 
                     AppendLog($"[TestMode] Inspect {elapsedMs:F1}ms - OK={res.IsOk}", !res.IsOk);
