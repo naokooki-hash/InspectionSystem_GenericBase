@@ -1,15 +1,19 @@
 using System;
 using System.Threading;
 using OpenCvSharp;
+#if !LINUX
 using Teli.TeliCamAPI.NET;
 using Teli.TeliCamAPI.NET.Utility;
+#endif
 
 namespace InspectionSystem_GenericBase
 {
     public class TeliCamera : IDisposable
     {
+#if !LINUX
         private CameraSystem? camSystem;
         private CameraDevice? camDevice;
+#endif
         private AutoResetEvent imageReceivedEvent = new AutoResetEvent(false);
         private int maxPayloadSize = 0;
         private volatile bool keepCapturing = false;
@@ -18,12 +22,17 @@ namespace InspectionSystem_GenericBase
         // 画像処理側へ渡すイベント
         public event EventHandler<Mat>? OnFrameCaptured;
 
+#if !LINUX
         public bool IsConnected => camDevice != null;
+#else
+        public bool IsConnected => false;
+#endif
 
         public bool Initialize(int cameraIndex = 0)
         {
             try
             {
+#if !LINUX
                 camSystem = new CameraSystem();
                 // BU160MCF（U3V）等に対応
                 if (camSystem.Initialize(CameraType.TypeU3v | CameraType.TypeGev) != CamApiStatus.Success) return false;
@@ -66,6 +75,9 @@ namespace InspectionSystem_GenericBase
                 if (camDevice.camStream.Start() != CamApiStatus.Success) return false;
 
                 return true;
+#else
+                return false;
+#endif
             }
             catch (Exception)
             {
@@ -93,6 +105,7 @@ namespace InspectionSystem_GenericBase
 
         private void CaptureLoop()
         {
+#if !LINUX
             CameraImageInfo? imageInfo = null;
             int bufferIndex;
 
@@ -143,11 +156,13 @@ namespace InspectionSystem_GenericBase
                     }
                 }
             }
+#endif
         }
 
         public void Terminate()
         {
             StopCapture();
+#if !LINUX
             if (camDevice != null)
             {
                 camDevice.camStream.Stop();
@@ -158,6 +173,7 @@ namespace InspectionSystem_GenericBase
             {
                 camSystem.Terminate();
             }
+#endif
         }
 
         public void Dispose()
