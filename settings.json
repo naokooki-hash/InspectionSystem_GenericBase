@@ -1,0 +1,9 @@
+{
+  "PlcIpAddress": "192.168.3.250",
+  "PlcPort": 5000,
+  "OkDeviceAddress": 100,
+  "NgDeviceAddress": 101,
+  "ReadDeviceAddress": 102,
+  "TriggerMode": "Plc",
+  "InspectionIntervalMs": 500
+}
