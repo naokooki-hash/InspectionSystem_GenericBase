@@ -22,16 +22,14 @@ namespace InspectionSystem_GenericBase
         private const int STATE_STABILIZING = 1;
         private const int STATE_COOLING = 2;
 
-        private TeliCamera _camera;
-        private MeasurementCore _measurement;
-        private InspectionEngine _inspectionEngine;
-        private PlcCommunicator _plc;
-        private AppSettings _appSettings;
-        private ProductionAnalyzer _analyzer = new ProductionAnalyzer();
-
-        private PictureBox _pictureBoxMain = null!;
-        private PictureBox _pictureBoxDebug = null!;
-        private TabControl _tabControl = null!;
+        internal TeliCamera _camera;
+        internal MeasurementCore _measurement;
+        internal InspectionEngine _inspectionEngine;
+        internal PlcCommunicator _plc;
+        internal AppSettings _appSettings;
+        internal ProductionAnalyzer _analyzer = new ProductionAnalyzer();
+        internal PictureBox _pictureBoxMain = null!;
+        internal PictureBox? _pictureBoxDebug;
         private TextBox _txtLog = null!;
 
         private Label _lblStatus = null!;
@@ -50,34 +48,23 @@ namespace InspectionSystem_GenericBase
         private bool _requestErrorTest = false;
         private bool _requestOkTest = false; // ★テスト用: 強制OKフラグ
 
-        private bool _isAdminMode = false;
-        private Button _btnAdminLogin = null!;
+
 
         private NumericUpDown _nudTriggerThreshold = null!, _nudStabilityDuration = null!, _nudResetThreshold = null!;
         private NumericUpDown _nudExposureTime = null!;
         private NumericUpDown _nudRoiX = null!, _nudRoiY = null!, _nudRoiW = null!, _nudRoiH = null!;
 
-        // Test mode variables
-        private GroupBox _gbTestMode = null!;
-        private CheckBox _chkTestModeEnable = null!;
-        private Button _btnSelectTestFolder = null!;
-        private Button _btnPrevImage = null!;
-        private Button _btnNextImage = null!;
-        private CheckBox _chkAutoPlay = null!;
-        private Label _lblTestImageInfo = null!;
-
-        private bool _isTestModeEnabled = false;
-        private string _testImagesPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestImages");
-        private List<string> _testImageFiles = new List<string>();
-        private int _currentTestImageIndex = 0;
-        private System.Windows.Forms.Timer _autoPlayTimer = null!;
+        internal bool _isTestModeEnabled = false;
+        internal string _testImagesPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestImages");
+        internal List<string> _testImageFiles = new List<string>();
+        internal int _currentTestImageIndex = 0;
         private NumericUpDown _nudSaveRoiX = null!, _nudSaveRoiY = null!, _nudSaveRoiW = null!, _nudSaveRoiH = null!;
 
         private NumericUpDown _nudLogKeepDays = null!;
-        private int _logKeepDays = 30;
+        internal int _logKeepDays = 30;
 
         private NumericUpDown _nudAutoStartCount = null!;
-        private int _autoStartCount = 3;
+        internal int _autoStartCount = 3;
         private int _missedTriggerCount = 0;
         private bool _wasTriggeredLastFrame = false;
 
@@ -104,18 +91,18 @@ namespace InspectionSystem_GenericBase
 
         private NumericUpDown _nudOuterTargetX = null!, _nudOuterOffsetX = null!, _nudOuterTargetA = null!, _nudOuterOffsetA = null!;
         private NumericUpDown _nudTargetXOffset = null!, _nudOffsetTolerance = null!, _nudTargetAngle = null!, _nudAngleTolerance = null!;
-        private NumericUpDown _nudActualWidthMm = null!;
+
 
         private NumericUpDown _nudPlcDelayMs = null!;
-        private int _plcDelayMs = 100;
+        internal int _plcDelayMs = 100;
 
         private NumericUpDown _nudRetryCount = null!;
         private NumericUpDown _nudRetryDelayMs = null!;
-        private int _maxRetryCount = 3;
-        private int _retryDelayMs = 100;
+        internal int _maxRetryCount = 3;
+        internal int _retryDelayMs = 100;
         private int _currentRetry = 0;
 
-        private Button _btnCalcRatio = null!;
+
 
         private int _currentState = STATE_WAITING;
         private DateTime _stabilityStartTime = DateTime.MinValue;
@@ -132,14 +119,16 @@ namespace InspectionSystem_GenericBase
         private bool _plcTriggerReceived = false;
 
         // 各カメラの本来の検査設定（フォールバック復元用）
-        private bool _configEnableOuterTilt = true;
-        private bool _configEnableHole = true;
+        internal bool _configEnableOuterTilt = true;
+        internal bool _configEnableHole = true;
 
-        private int _totalCount = 0, _okCount = 0, _ngCount = 0, _saveMode = 0, _stabilityDurationMs = 300;
+        private int _totalCount = 0, _okCount = 0, _ngCount = 0;
+        internal int _stabilityDurationMs = 300;
+        internal int _saveMode = 0;
         private int _pendingSaveResult = -1;
         private InspectionResult? _lastInspectionResult;
-        private bool _triggerOnBright = true;
-        private double _triggerThreshold = 100.0, _resetThreshold = 50.0;
+        internal bool _triggerOnBright = true;
+        internal double _triggerThreshold = 100.0, _resetThreshold = 50.0;
         private string _logDirPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
 
         private DateTime _lastUiUpdateTime = DateTime.MinValue;
@@ -166,8 +155,6 @@ namespace InspectionSystem_GenericBase
             _plc.OnLog += (msg, isErr) => AppendLog(msg, isErr);
 
             LoadConfig();
-            UpdateUiForAdminMode();
-
             this.Load += Form1_Load;
             this.FormClosing += Form1_FormClosing;
 
@@ -201,51 +188,27 @@ namespace InspectionSystem_GenericBase
                 Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,
-                Location = new Point(10, 500),
-                Size = new Size(640, 290),
                 BackColor = Color.Black,
                 ForeColor = Color.LightGreen,
                 Font = new Font("Consolas", 9)
             };
 
-            int tabX = 1310;
-            _tabControl = new TabControl { Location = new Point(tabX, 10), Size = new Size(580, 930), Font = new Font(this.Font.FontFamily, 10) };
-            _tabControl.SelectedIndexChanged += (s, e) => { _isDebugTabActive = (_tabControl.SelectedIndex == 3); };
-            this.Controls.Add(_tabControl);
-
-            TabPage t1 = new TabPage("運用 (Main)"); InitializeMainTab(t1); _tabControl.TabPages.Add(t1);
-            TabPage t2 = new TabPage("設定 (Settings)") { AutoScroll = true }; InitializeSettingsTab(t2); _tabControl.TabPages.Add(t2);
-            TabPage t3 = new TabPage("検査設定 (Inspection)") { AutoScroll = true }; InitializeInspectionTab(t3); _tabControl.TabPages.Add(t3);
-            TabPage t4 = new TabPage("画像確認 (Debug)") { AutoScroll = true }; InitializeDebugTab(t4); _tabControl.TabPages.Add(t4);
-            TabPage t5 = new TabPage("PLC設定 (PLC Comms)") { AutoScroll = true }; InitializePlcCommsTab(t5); _tabControl.TabPages.Add(t5);
-
-            _btnAdminLogin = new Button { Text = "管理者ログイン", Location = new Point(tabX + 430, 10), Size = new Size(140, 25) };
-            _btnAdminLogin.Click += BtnAdminLogin_Click;
-            this.Controls.Add(_btnAdminLogin);
-            _btnAdminLogin.BringToFront();
+            SetupRightPanelControls();
         }
 
-        private void BtnAdminLogin_Click(object? sender, EventArgs e)
+        private void BtnAdminSettings_Click(object? sender, EventArgs e)
         {
-            if (_isAdminMode)
-            {
-                _isAdminMode = false;
-                _btnAdminLogin.Text = "管理者ログイン";
-                UpdateUiForAdminMode();
-                return;
-            }
-
             using (var prompt = new Form())
             {
                 prompt.Width = 300;
                 prompt.Height = 150;
                 prompt.FormBorderStyle = FormBorderStyle.FixedDialog;
-                prompt.Text = "管理者ログイン";
-                prompt.StartPosition = FormStartPosition.CenterScreen;
+                prompt.Text = "管理者認証";
+                prompt.StartPosition = FormStartPosition.CenterParent;
 
-                Label textLabel = new Label() { Left = 50, Top=20, Text="パスワード:" };
-                TextBox textBox = new TextBox() { Left = 50, Top=50, Width=180, PasswordChar='*' };
-                Button confirmation = new Button() { Text = "OK", Left=130, Width=100, Top=80, DialogResult = DialogResult.OK };
+                Label textLabel = new Label() { Left = 50, Top = 20, Text = "パスワードを入力してください:" };
+                TextBox textBox = new TextBox() { Left = 50, Top = 50, Width = 180, PasswordChar = '*' };
+                Button confirmation = new Button() { Text = "OK", Left = 130, Width = 100, Top = 80, DialogResult = DialogResult.OK };
 
                 prompt.Controls.Add(textBox);
                 prompt.Controls.Add(confirmation);
@@ -256,9 +219,12 @@ namespace InspectionSystem_GenericBase
                 {
                     if (textBox.Text == _appSettings.AdminPassword)
                     {
-                        _isAdminMode = true;
-                        _btnAdminLogin.Text = "管理者ログアウト";
-                        UpdateUiForAdminMode();
+
+
+                        using (var settingsForm = new FormSettings(this))
+                        {
+                            settingsForm.ShowDialog(this);
+                        }
                     }
                     else
                     {
@@ -268,121 +234,13 @@ namespace InspectionSystem_GenericBase
             }
         }
 
-        private void BtnChangePassword_Click(object? sender, EventArgs e)
+        private void SetupRightPanelControls()
         {
-            using (var prompt = new Form())
-            {
-                prompt.Width = 350;
-                prompt.Height = 220;
-                prompt.FormBorderStyle = FormBorderStyle.FixedDialog;
-                prompt.Text = "管理者パスワードの変更";
-                prompt.StartPosition = FormStartPosition.CenterScreen;
-
-                Label lblCurrent = new Label { Left = 20, Top = 20, Width = 130, Text = "現在のパスワード:" };
-                TextBox txtCurrent = new TextBox { Left = 160, Top = 20, Width = 150, PasswordChar = '*' };
-
-                Label lblNew = new Label { Left = 20, Top = 55, Width = 130, Text = "新しいパスワード:" };
-                TextBox txtNew = new TextBox { Left = 160, Top = 55, Width = 150, PasswordChar = '*' };
-
-                Label lblConfirm = new Label { Left = 20, Top = 90, Width = 130, Text = "新しいパスワード(確認):" };
-                TextBox txtConfirm = new TextBox { Left = 160, Top = 90, Width = 150, PasswordChar = '*' };
-
-                Button btnOk = new Button { Text = "変更", Left = 110, Top = 135, Width = 90, DialogResult = DialogResult.OK };
-                Button btnCancel = new Button { Text = "キャンセル", Left = 210, Top = 135, Width = 90, DialogResult = DialogResult.Cancel };
-
-                prompt.Controls.Add(lblCurrent); prompt.Controls.Add(txtCurrent);
-                prompt.Controls.Add(lblNew); prompt.Controls.Add(txtNew);
-                prompt.Controls.Add(lblConfirm); prompt.Controls.Add(txtConfirm);
-                prompt.Controls.Add(btnOk); prompt.Controls.Add(btnCancel);
-                prompt.AcceptButton = btnOk;
-                prompt.CancelButton = btnCancel;
-
-                if (prompt.ShowDialog() == DialogResult.OK)
-                {
-                    if (txtCurrent.Text != _appSettings.AdminPassword)
-                    {
-                        MessageBox.Show("現在のパスワードが一致しません。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
-                    if (string.IsNullOrEmpty(txtNew.Text))
-                    {
-                        MessageBox.Show("新しいパスワードを入力してください。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
-                    if (txtNew.Text != txtConfirm.Text)
-                    {
-                        MessageBox.Show("新しいパスワードと確認用パスワードが一致しません。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
-
-                    _appSettings.AdminPassword = txtNew.Text;
-                    _appSettings.Save();
-                    MessageBox.Show("管理者パスワードを更新しました。", "通知", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-            }
-        }
-
-        private void InitializePlcCommsTab(TabPage tab)
-        {
-            int y = 10, lw = 150, cw = 120, lh = 28;
-            void AddL(string txt) { tab.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(lw, 20) }); }
-
-            tab.Controls.Add(new Label { Text = "--- PLC通信設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
-
-            AddL("IPアドレス:");
-            TextBox txtIp = new TextBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), Text = _appSettings.PlcIpAddress };
-            txtIp.TextChanged += (s, e) => { _appSettings.PlcIpAddress = txtIp.Text; }; tab.Controls.Add(txtIp); y += lh;
-
-            AddL("ポート:");
-            NumericUpDown nudPort = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 1, Maximum = 65535, Value = _appSettings.PlcPort };
-            nudPort.ValueChanged += (s, e) => { _appSettings.PlcPort = (int)nudPort.Value; }; tab.Controls.Add(nudPort); y += lh;
-
-            AddL("ベンダー:");
-            ComboBox cmbVendor = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), DropDownStyle = ComboBoxStyle.DropDownList };
-            cmbVendor.Items.AddRange(new object[] { "Mitsubishi", "Keyence" });
-            cmbVendor.SelectedItem = _appSettings.PlcVendor;
-            cmbVendor.SelectedIndexChanged += (s, e) => { _appSettings.PlcVendor = cmbVendor.SelectedItem?.ToString() ?? "Mitsubishi"; }; tab.Controls.Add(cmbVendor); y += lh;
-
-            AddL("データ型:");
-            ComboBox cmbDataType = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), DropDownStyle = ComboBoxStyle.DropDownList };
-            cmbDataType.Items.AddRange(new object[] { "Bit", "Word" });
-            cmbDataType.SelectedItem = _appSettings.PlcDataType;
-            cmbDataType.SelectedIndexChanged += (s, e) => { _appSettings.PlcDataType = cmbDataType.SelectedItem?.ToString() ?? "Bit"; }; tab.Controls.Add(cmbDataType); y += lh;
-            y += 10;
-
-            tab.Controls.Add(new Label { Text = "--- デバイスアドレス設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
-
-            AddL("Heartbeat (常時監視):");
-            NumericUpDown nudHeartbeat = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.HeartbeatAddress };
-            nudHeartbeat.ValueChanged += (s, e) => { _appSettings.HeartbeatAddress = (int)nudHeartbeat.Value; }; tab.Controls.Add(nudHeartbeat); y += lh;
-            y += 10;
-
-            tab.Controls.Add(new Label { Text = "【カメラ設定】", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkOrange }); y += 22;
-            AddL("読取 (Trigger):");
-            NumericUpDown nudCRead = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.Cam.ReadDeviceAddress };
-            nudCRead.ValueChanged += (s, e) => { _appSettings.Cam.ReadDeviceAddress = (int)nudCRead.Value; }; tab.Controls.Add(nudCRead); y += lh;
-            AddL("書込 (OK):");
-            NumericUpDown nudCOk = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.Cam.OkDeviceAddress };
-            nudCOk.ValueChanged += (s, e) => { _appSettings.Cam.OkDeviceAddress = (int)nudCOk.Value; _appSettings.Cam.WriteDeviceAddress = (int)nudCOk.Value; }; tab.Controls.Add(nudCOk); y += lh;
-            AddL("書込 (NG):");
-            NumericUpDown nudCNg = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0, Maximum = 99999, Value = _appSettings.Cam.NgDeviceAddress };
-            nudCNg.ValueChanged += (s, e) => { _appSettings.Cam.NgDeviceAddress = (int)nudCNg.Value; }; tab.Controls.Add(nudCNg); y += lh;
-            y += 20;
-
-            Button btnSaveAndReconnect = new Button { Text = "保存して再接続", Location = new Point(10, y), Size = new Size(300, 40), BackColor = Color.LightGreen };
-            btnSaveAndReconnect.Click += (s, e) => {
-                _appSettings.Save();
-                _plc.Disconnect();
-                _plc.Connect();
-                MessageBox.Show("設定を保存し、再接続を試みました。");
-            };
-            tab.Controls.Add(btnSaveAndReconnect);
-        }
-
-        private void InitializeMainTab(TabPage tab)
-        {
+            int x = 1310;
             int y = 10;
-            _btnRunToggle = new Button { Text = "▶ 運転開始 (START)", Location = new Point(10, y), Size = new Size(540, 60), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 16, FontStyle.Bold) };
+            int width = 580;
+
+            _btnRunToggle = new Button { Text = "▶ 運転開始 (START)", Location = new Point(x, y), Size = new Size(width, 60), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 16, FontStyle.Bold) };
             _btnRunToggle.Click += (s, e) => {
                 _isRunning = !_isRunning; _missedTriggerCount = 0;
                 if (_isRunning) {
@@ -396,136 +254,50 @@ namespace InspectionSystem_GenericBase
                     SafeInvoke(() => lblStateUpdate("STOPPED", Color.DarkGray));
                 }
             };
-            tab.Controls.Add(_btnRunToggle); y += 75;
+            this.Controls.Add(_btnRunToggle); y += 75;
 
-            _chkShowOverlay = new CheckBox { Text = "計測パラメータを表示する", Location = new Point(10, y), AutoSize = true, Checked = true };
-            tab.Controls.Add(_chkShowOverlay); y += 30;
+            _chkShowOverlay = new CheckBox { Text = "計測パラメータを表示する", Location = new Point(x, y), AutoSize = true, Checked = true };
+            this.Controls.Add(_chkShowOverlay); y += 30;
 
-            _lblAlignmentStatus = new Label { Text = "ALIGNMENT: STOPPED", Location = new Point(10, y), Size = new Size(540, 50), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 18, FontStyle.Bold), BackColor = Color.DarkGray, ForeColor = Color.White };
-            tab.Controls.Add(_lblAlignmentStatus); y += 60;
+            _lblAlignmentStatus = new Label { Text = "ALIGNMENT: STOPPED", Location = new Point(x, y), Size = new Size(width, 50), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 18, FontStyle.Bold), BackColor = Color.DarkGray, ForeColor = Color.White };
+            this.Controls.Add(_lblAlignmentStatus); y += 60;
 
-            _lblBigResult = new Label { Text = "TOTAL: STOPPED", Location = new Point(10, y), Size = new Size(540, 80), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 24, FontStyle.Bold), BackColor = Color.DarkGray, ForeColor = Color.White };
-            tab.Controls.Add(_lblBigResult); y += 95;
+            _lblBigResult = new Label { Text = "TOTAL: STOPPED", Location = new Point(x, y), Size = new Size(width, 80), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 24, FontStyle.Bold), BackColor = Color.DarkGray, ForeColor = Color.White };
+            this.Controls.Add(_lblBigResult); y += 95;
 
-            GroupBox gp = new GroupBox { Text = "生産カウンター", Location = new Point(10, y), Size = new Size(540, 110) };
+            GroupBox gp = new GroupBox { Text = "生産カウンター", Location = new Point(x, y), Size = new Size(width, 110) };
             _lblTotal = new Label { Text = "総検査数 : 0", Location = new Point(20, 25), AutoSize = true };
             _lblOk = new Label { Text = "良品 (OK): 0", Location = new Point(20, 50), AutoSize = true, ForeColor = Color.Green, Font = new Font(this.Font, FontStyle.Bold) };
             _lblNg = new Label { Text = "不良 (NG): 0", Location = new Point(20, 75), AutoSize = true, ForeColor = Color.Red, Font = new Font(this.Font, FontStyle.Bold) };
             gp.Controls.Add(_lblTotal); gp.Controls.Add(_lblOk); gp.Controls.Add(_lblNg);
-            tab.Controls.Add(gp); y += 120;
+            this.Controls.Add(gp); y += 120;
 
-            Button btnReset = new Button { Text = "カウンターリセット", Location = new Point(10, y), Size = new Size(540, 30) };
+            Button btnReset = new Button { Text = "カウンターリセット", Location = new Point(x, y), Size = new Size(width, 30) };
             btnReset.Click += (s, e) => { _totalCount = _okCount = _ngCount = 0; UpdateCounterDisplay(); };
-            tab.Controls.Add(btnReset); y += 45;
+            this.Controls.Add(btnReset); y += 45;
 
-            Button btnDashboard = new Button
+            Button btnAdminSettings = new Button
             {
-                Text = "📊 稼働・品質分析ダッシュボードを開く",
-                Location = new Point(10, y),
-                Size = new Size(540, 45),
-                BackColor = Color.LightSlateGray,
+                Text = "⚙ 管理・設定 (Admin / Settings)",
+                Location = new Point(x, y),
+                Size = new Size(width, 50),
+                BackColor = Color.Orange,
                 ForeColor = Color.White,
-                Font = new Font(this.Font.FontFamily, 11, FontStyle.Bold)
+                Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold)
             };
+            btnAdminSettings.Click += BtnAdminSettings_Click;
+            this.Controls.Add(btnAdminSettings); y += 60;
 
-            btnDashboard.Click += (s, e) => {
-                FormDashboard dash = new FormDashboard(_analyzer);
-                dash.ShowDialog(this);
-            };
-            tab.Controls.Add(btnDashboard); y += 55;
-
-            Button btnTest = new Button { Text = "手動検査テスト", Location = new Point(10, y), Size = new Size(540, 35), BackColor = Color.LightSkyBlue, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
-            btnTest.Click += (s, e) => {
-                _requestManualTest = true;
-                _requestOkTest = false;
-                _requestErrorTest = false;
-            };
-            tab.Controls.Add(btnTest); y += 40;
-
-            _gbTestMode = new GroupBox { Text = "テストモード操作パネル (Test Mode)", Location = new Point(10, y), Size = new Size(540, 120), Enabled = false };
-
-            _chkTestModeEnable = new CheckBox { Text = "テストモード有効化", Location = new Point(10, 25), AutoSize = true };
-            _chkTestModeEnable.CheckedChanged += ChkTestModeEnable_CheckedChanged;
-
-            _btnSelectTestFolder = new Button { Text = "フォルダ選択", Location = new Point(160, 20), Size = new Size(100, 30) };
-            _btnSelectTestFolder.Click += BtnSelectTestFolder_Click;
-
-            _lblTestImageInfo = new Label { Text = "画像: 0 / 0", Location = new Point(270, 25), AutoSize = true };
-
-            _btnPrevImage = new Button { Text = "◀ 前の画像", Location = new Point(10, 60), Size = new Size(100, 40) };
-            _btnPrevImage.Click += (s, e) => { LoadAndInspectTestImage(-1); };
-
-            _btnNextImage = new Button { Text = "次の画像 ▶", Location = new Point(120, 60), Size = new Size(100, 40) };
-            _btnNextImage.Click += (s, e) => { LoadAndInspectTestImage(1); };
-
-            _chkAutoPlay = new CheckBox { Text = "自動送り", Location = new Point(240, 70), AutoSize = true };
-            _chkAutoPlay.CheckedChanged += ChkAutoPlay_CheckedChanged;
-
-            _gbTestMode.Controls.Add(_chkTestModeEnable);
-            _gbTestMode.Controls.Add(_btnSelectTestFolder);
-            _gbTestMode.Controls.Add(_lblTestImageInfo);
-            _gbTestMode.Controls.Add(_btnPrevImage);
-            _gbTestMode.Controls.Add(_btnNextImage);
-            _gbTestMode.Controls.Add(_chkAutoPlay);
-
-            tab.Controls.Add(_gbTestMode); y += 130;
-
-            _autoPlayTimer = new System.Windows.Forms.Timer { Interval = 1500 }; // 1.5 seconds default
-            _autoPlayTimer.Tick += (s, e) => { LoadAndInspectTestImage(1); };
-        }
-
-        private void UpdateUiForAdminMode()
-        {
-            if (_tabControl != null && _tabControl.TabPages.Count >= 5)
-            {
-                // Disable/Enable specific tabs or controls based on admin mode
-                foreach (Control ctrl in _tabControl.TabPages[1].Controls) ctrl.Enabled = _isAdminMode;
-                foreach (Control ctrl in _tabControl.TabPages[2].Controls) ctrl.Enabled = _isAdminMode;
-                foreach (Control ctrl in _tabControl.TabPages[4].Controls) ctrl.Enabled = _isAdminMode;
-            }
-            if (_gbTestMode != null)
-            {
-                _gbTestMode.Enabled = _isAdminMode;
-                // Automatically turn off test mode if leaving admin mode to be safe
-                if (!_isAdminMode && _chkTestModeEnable.Checked)
-                {
-                    _chkTestModeEnable.Checked = false;
-                }
+            if (_txtLog != null) {
+                _txtLog.Location = new Point(x, y);
+                _txtLog.Size = new Size(width, 420);
+                this.Controls.Add(_txtLog);
             }
         }
 
-        private void ChkTestModeEnable_CheckedChanged(object? sender, EventArgs e)
-        {
-            _isTestModeEnabled = _chkTestModeEnable.Checked;
-            if (_isTestModeEnabled)
-            {
-                if (!Directory.Exists(_testImagesPath))
-                {
-                    Directory.CreateDirectory(_testImagesPath);
-                }
-                LoadTestImageFiles();
-            }
-            else
-            {
-                _chkAutoPlay.Checked = false; // Stop auto-play
-            }
-        }
 
-        private void BtnSelectTestFolder_Click(object? sender, EventArgs e)
-        {
-            using (var fbd = new FolderBrowserDialog())
-            {
-                fbd.SelectedPath = _testImagesPath;
-                fbd.Description = "テスト用画像の入ったフォルダを選択してください";
-                if (fbd.ShowDialog() == DialogResult.OK)
-                {
-                    _testImagesPath = fbd.SelectedPath;
-                    LoadTestImageFiles();
-                }
-            }
-        }
 
-        private void LoadTestImageFiles()
+        internal void LoadTestImageFiles()
         {
             if (Directory.Exists(_testImagesPath))
             {
@@ -536,42 +308,15 @@ namespace InspectionSystem_GenericBase
                     .ToList();
 
                 _currentTestImageIndex = 0;
-                UpdateTestImageInfoLabel();
             }
             else
             {
                 _testImageFiles.Clear();
                 _currentTestImageIndex = 0;
-                UpdateTestImageInfoLabel();
             }
         }
 
-        private void UpdateTestImageInfoLabel()
-        {
-            if (_testImageFiles.Count == 0)
-            {
-                _lblTestImageInfo.Text = "画像: 0 / 0";
-            }
-            else
-            {
-                string filename = Path.GetFileName(_testImageFiles[_currentTestImageIndex]);
-                _lblTestImageInfo.Text = $"画像: {_currentTestImageIndex + 1} / {_testImageFiles.Count} ({filename})";
-            }
-        }
-
-        private void ChkAutoPlay_CheckedChanged(object? sender, EventArgs e)
-        {
-            if (_chkAutoPlay.Checked && _isTestModeEnabled && _testImageFiles.Count > 0)
-            {
-                _autoPlayTimer.Start();
-            }
-            else
-            {
-                _autoPlayTimer.Stop();
-            }
-        }
-
-        private void LoadAndInspectTestImage(int step)
+        internal void LoadAndInspectTestImage(int step)
         {
             if (!_isTestModeEnabled || _testImageFiles.Count == 0) return;
 
@@ -579,7 +324,7 @@ namespace InspectionSystem_GenericBase
             if (_currentTestImageIndex < 0) _currentTestImageIndex = _testImageFiles.Count - 1;
             if (_currentTestImageIndex >= _testImageFiles.Count) _currentTestImageIndex = 0;
 
-            UpdateTestImageInfoLabel();
+
 
             string filePath = _testImageFiles[_currentTestImageIndex];
             try
@@ -652,225 +397,9 @@ namespace InspectionSystem_GenericBase
             }
         }
 
-                private void InitializeSettingsTab(TabPage tab)
-        {
-            int y = 20, lw = 150, cw = 100, lh = 28;
-            void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M, Control? parent = null, int lx = 10)
-            { if (parent == null) parent = tab; parent.Controls.Add(new Label { Text = txt, Location = new Point(lx, y + 2), Size = new Size(lw, 20) });
-                n = new NumericUpDown { Location = new Point(lx + lw, y), Size = new Size(cw, 20), Minimum = min, Maximum = max, Value = val, DecimalPlaces = dp, Increment = step };
-                n.ValueChanged += (s, e) => UpdateSettingsFromUI(); parent.Controls.Add(n); y += lh;
-            }
 
-            GroupBox grpCameraSettings = new GroupBox { Text = "カメラ・システム基本設定", Location = new Point(10, 10), Size = new Size(540, 150) };
-            tab.Controls.Add(grpCameraSettings);
 
-            y = 20;
-            ComboBox cmbAppMode = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw + 50, 25), DropDownStyle = ComboBoxStyle.DropDownList };
-            cmbAppMode.Items.AddRange(new object[] { "Visual (カメラ輝度自動)", "Plc (ネットワーク指令)" });
-            cmbAppMode.SelectedIndex = _appSettings.TriggerMode == "Visual" ? 0 : 1;
-            cmbAppMode.SelectedIndexChanged += (s, e) => { _appSettings.TriggerMode = cmbAppMode.SelectedIndex == 0 ? "Visual" : "Plc"; _appSettings.Save(); };
-            grpCameraSettings.Controls.Add(new Label { Text = "検査トリガー元:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            grpCameraSettings.Controls.Add(cmbAppMode);
-            y += lh;
 
-            _cmbSaveMode = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw + 50, 25), DropDownStyle = ComboBoxStyle.DropDownList };
-            _cmbSaveMode.Items.AddRange(new object[] { "0: 保存しない", "1: NGのみ保存", "2: 全て保存" });
-            _cmbSaveMode.SelectedIndex = _saveMode;
-            _cmbSaveMode.SelectedIndexChanged += (s, e) => { if (!_isLoadingConfig) _saveMode = _cmbSaveMode.SelectedIndex; };
-            AddN("カメラ露光時間:", ref _nudExposureTime, 100, 100000, (decimal)_appSettings.Cam.ExposureTime, 0, 100M, grpCameraSettings);
-            grpCameraSettings.Controls.Add(new Label { Text = "画像保存モード:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            grpCameraSettings.Controls.Add(_cmbSaveMode);
-            y += lh;
-
-            AddN("ログ保存期間(日) ※0で無期限:", ref _nudLogKeepDays, 0, 3650, _logKeepDays, 0, 1M, grpCameraSettings);
-
-            grpCameraSettings.Controls.Add(new Label { Text = "セキュリティ:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            Button btnChangePassword = new Button { Text = "管理者パスワードの変更...", Location = new Point(10 + lw, y), Size = new Size(cw + 50, 25), BackColor = Color.LightGray };
-            btnChangePassword.Click += BtnChangePassword_Click;
-            grpCameraSettings.Controls.Add(btnChangePassword);
-            y += lh;
-
-            GroupBox grpTriggerSettings = new GroupBox { Text = "トリガー・リトライ・ポカヨケ設定", Location = new Point(10, 170), Size = new Size(540, 280) };
-            tab.Controls.Add(grpTriggerSettings);
-
-            y = 20;
-            _cmbTriggerMode = new ComboBox { Location = new Point(10 + lw, y), Size = new Size(cw, 25), DropDownStyle = ComboBoxStyle.DropDownList };
-            _cmbTriggerMode.Items.AddRange(new object[] { "明転 (>)", "暗転 (<)" });
-            _cmbTriggerMode.SelectedIndex = _triggerOnBright ? 0 : 1;
-            _cmbTriggerMode.SelectedIndexChanged += (s, e) => { if (!_isLoadingConfig) _triggerOnBright = _cmbTriggerMode.SelectedIndex == 0; };
-            grpTriggerSettings.Controls.Add(new Label { Text = "Visual Trigger:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-            grpTriggerSettings.Controls.Add(_cmbTriggerMode);
-            y += lh;
-
-            AddN("Trigger Thresh:", ref _nudTriggerThreshold, 0, 255, (decimal)_triggerThreshold, 1, 0.5M, grpTriggerSettings);
-            AddN("Reset Thresh:", ref _nudResetThreshold, 0, 255, (decimal)_resetThreshold, 1, 0.5M, grpTriggerSettings);
-            AddN("Stability (ms):", ref _nudStabilityDuration, 0, 5000, _stabilityDurationMs, 0, 1M, grpTriggerSettings);
-            AddN("PLC Delay(待機) ms:", ref _nudPlcDelayMs, 0, 5000, _plcDelayMs, 0, 1M, grpTriggerSettings);
-
-            AddN("最大リトライ回数:", ref _nudRetryCount, 0, 10, _maxRetryCount, 0, 1M, grpTriggerSettings);
-            AddN("リトライ間隔(ms):", ref _nudRetryDelayMs, 0, 5000, _retryDelayMs, 0, 1M, grpTriggerSettings);
-            AddN("自動起動トリガー回数:", ref _nudAutoStartCount, 0, 100, _autoStartCount, 0, 1M, grpTriggerSettings);
-            grpTriggerSettings.Controls.Add(new Label { Text = "※0で無効。指定回数トリガーが来たら自動で運転開始します", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Gray }); y += 20;
-
-            GroupBox grpAdvanced = new GroupBox { Text = "高度な設定 (ROI)", Location = new Point(10, 460), Size = new Size(540, 160) };
-            tab.Controls.Add(grpAdvanced);
-            y = 20;
-
-            AddN("輝度 ROI X:", ref _nudRoiX, 0, 3000, _roi.X, 0, 1M, grpAdvanced);
-            AddN("輝度 ROI Y:", ref _nudRoiY, 0, 3000, _roi.Y, 0, 1M, grpAdvanced);
-            AddN("輝度 ROI W:", ref _nudRoiW, 1, 3000, _roi.Width, 0, 1M, grpAdvanced);
-            AddN("輝度 ROI H:", ref _nudRoiH, 1, 3000, _roi.Height, 0, 1M, grpAdvanced);
-
-            y = 20; int lx2 = 280;
-            AddN("Save ROI X:", ref _nudSaveRoiX, 0, 3000, _saveRoi.X, 0, 1M, grpAdvanced, lx2);
-            AddN("Save ROI Y:", ref _nudSaveRoiY, 0, 3000, _saveRoi.Y, 0, 1M, grpAdvanced, lx2);
-            AddN("Save ROI W:", ref _nudSaveRoiW, 1, 3000, _saveRoi.Width, 0, 1M, grpAdvanced, lx2);
-            AddN("Save ROI H:", ref _nudSaveRoiH, 1, 3000, _saveRoi.Height, 0, 1M, grpAdvanced, lx2);
-
-            GroupBox grpMaintenance = new GroupBox { Text = "デバッグ / メンテナンス", Location = new Point(10, 630), Size = new Size(540, 120) };
-            tab.Controls.Add(grpMaintenance);
-            y = 20;
-
-            Button btnTestOk = new Button { Text = "強制OKテスト", Location = new Point(10, y), Size = new Size(250, 35), BackColor = Color.LightGreen, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
-            btnTestOk.Click += (s, e) => {
-                _requestOkTest = true;
-                _requestErrorTest = false;
-            };
-            grpMaintenance.Controls.Add(btnTestOk);
-
-            Button btnTestNg = new Button { Text = "強制NGテスト", Location = new Point(270, y), Size = new Size(250, 35), BackColor = Color.Orange, Font = new Font(this.Font.FontFamily, 10, FontStyle.Bold) };
-            btnTestNg.Click += (s, e) => {
-                _requestErrorTest = true;
-                _requestOkTest = false;
-            };
-            grpMaintenance.Controls.Add(btnTestNg);
-            y += 45;
-
-            Button btnSave = new Button { Text = "設定を保存する (Save)", Location = new Point(10, y), Size = new Size(510, 40), BackColor = Color.LightGreen };
-            btnSave.Click += (s, e) => { SaveConfig(); MessageBox.Show("保存しました。"); };
-            grpMaintenance.Controls.Add(btnSave);
-
-            y = 760;
-
-            if (_txtLog != null) {
-                _txtLog.Location = new Point(10, y);
-                _txtLog.Size = new Size(540, 250);
-                tab.Controls.Add(_txtLog);
-                y += 260;
-            }
-        }
-
-                private void InitializeInspectionTab(TabPage tab)
-        {
-            int y = 20;
-            var m = _measurement;
-            int lw = 160, cw = 100, lh = 28;
-            void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M, Control? parent = null)
-            { if (parent == null) parent = tab; parent.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-                n = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = min, Maximum = max, Value = val, DecimalPlaces = dp, Increment = step };
-                n.ValueChanged += (s, e) => UpdateSettingsFromUI(); parent.Controls.Add(n); y += lh;
-            }
-            void AddRect(string txt, ref NumericUpDown nx, ref NumericUpDown ny, ref NumericUpDown nw, ref NumericUpDown nh, CvRect r, Control? parent = null)
-            { if (parent == null) parent = tab; parent.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(110, 20) });
-                int sx = 120, step = 65, boxW = 60;
-                nx = new NumericUpDown { Location = new Point(sx, y), Size = new Size(boxW, 20), Minimum = 0, Maximum = 3000, Value = r.X };
-                ny = new NumericUpDown { Location = new Point(sx + step, y), Size = new Size(boxW, 20), Minimum = 0, Maximum = 3000, Value = r.Y };
-                nw = new NumericUpDown { Location = new Point(sx + step * 2, y), Size = new Size(boxW, 20), Minimum = 1, Maximum = 3000, Value = r.Width };
-                nh = new NumericUpDown { Location = new Point(sx + step * 3, y), Size = new Size(boxW, 20), Minimum = 1, Maximum = 3000, Value = r.Height };
-                nx.ValueChanged += (s, e) => UpdateSettingsFromUI(); ny.ValueChanged += (s, e) => UpdateSettingsFromUI();
-                nw.ValueChanged += (s, e) => UpdateSettingsFromUI(); nh.ValueChanged += (s, e) => UpdateSettingsFromUI();
-                parent.Controls.Add(nx); parent.Controls.Add(ny); parent.Controls.Add(nw); parent.Controls.Add(nh); y += lh;
-            }
-
-            GroupBox grpInspectionSettings = new GroupBox { Text = "検査パラメータ設定", Location = new Point(10, 10), Size = new Size(540, 750) };
-            tab.Controls.Add(grpInspectionSettings);
-
-            y = 20;
-            grpInspectionSettings.Controls.Add(new Label { Text = "--- 検査モード 選択 (複数ONで並列・OR判定) ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Magenta, Font = new Font(this.Font, FontStyle.Bold) }); y += 22;
-            _chkEnableJigCheck = new CheckBox { Text = "エッジ間距離測定を有効にする", Location = new Point(10, y), AutoSize = true, Checked = m.EnableJigCheck };
-            _chkEnableJigCheck.CheckedChanged += (s, e) => UpdateSettingsFromUI(); grpInspectionSettings.Controls.Add(_chkEnableJigCheck); y += 22;
-            _chkEnableOuterTiltCheck = new CheckBox { Text = "【モードA】 外形エッジで製品の傾き・ズレを検査する", Location = new Point(10, y), AutoSize = true, Checked = m.EnableOuterTiltCheck, ForeColor = Color.Teal };
-            _chkEnableOuterTiltCheck.CheckedChanged += (s, e) => UpdateSettingsFromUI(); grpInspectionSettings.Controls.Add(_chkEnableOuterTiltCheck); y += 22;
-            _chkEnableHoleCheck = new CheckBox { Text = "【モードB】 穴で製品の傾き・ズレを検査する", Location = new Point(10, y), AutoSize = true, Checked = m.EnableHoleCheck, ForeColor = Color.Blue };
-            _chkEnableHoleCheck.CheckedChanged += (s, e) => UpdateSettingsFromUI(); grpInspectionSettings.Controls.Add(_chkEnableHoleCheck); y += 28;
-
-            grpInspectionSettings.Controls.Add(new Label { Text = "--- 【モードA】 外形エッジ パラメータ ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Teal }); y += 22;
-            AddRect("左エッジROI(青):", ref _nudTiltLX, ref _nudTiltLY, ref _nudTiltLW, ref _nudTiltLH, m.TiltLeftRoi, grpInspectionSettings);
-            AddRect("右エッジROI(青):", ref _nudTiltRX, ref _nudTiltRY, ref _nudTiltRW, ref _nudTiltRH, m.TiltRightRoi, grpInspectionSettings);
-            AddN("目標 Xずれ(mm):", ref _nudOuterTargetX, -100, 100, (decimal)m.TargetOuterXOffsetMm, 2, 0.1M, grpInspectionSettings);
-            AddN("Xずれ許容(mm):", ref _nudOuterOffsetX, 0, 50, (decimal)m.OuterOffsetToleranceMm, 2, 0.1M, grpInspectionSettings);
-            AddN("目標 Θ(deg):", ref _nudOuterTargetA, -180, 180, (decimal)m.TargetOuterAngleDeg, 2, 0.1M, grpInspectionSettings);
-            AddN("Θ許容(deg):", ref _nudOuterOffsetA, 0, 90, (decimal)m.OuterAngleToleranceDeg, 2, 0.1M, grpInspectionSettings); y += 10;
-
-            grpInspectionSettings.Controls.Add(new Label { Text = "--- 【モードB】 穴 パラメータ ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
-            AddRect("基準穴 ROI:", ref _nudHolesX, ref _nudHolesY, ref _nudHolesW, ref _nudHolesH, m.HolesRoi, grpInspectionSettings);
-            AddN("穴 最小面積:", ref _nudMinHoleArea, 0, 100000, m.MinHoleArea, 0, 1M, grpInspectionSettings);
-            AddN("穴 最大面積:", ref _nudMaxHoleArea, 0, 1000000, m.MaxHoleArea, 0, 1M, grpInspectionSettings);
-            AddN("真円度ししきい値:", ref _nudMinCircularity, 0, 1, (decimal)m.MinCircularity, 2, 0.05M, grpInspectionSettings);
-            AddN("目標 Xずれ(mm):", ref _nudTargetXOffset, -100, 100, (decimal)m.TargetXOffsetMm, 2, 0.1M, grpInspectionSettings);
-            AddN("Xずれ許容(mm):", ref _nudOffsetTolerance, 0, 50, (decimal)m.OffsetToleranceMm, 2, 0.1M, grpInspectionSettings);
-            AddN("目標 Θ(deg):", ref _nudTargetAngle, -180, 180, (decimal)m.TargetAngleDeg, 2, 0.1M, grpInspectionSettings);
-            AddN("Θ許容(deg):", ref _nudAngleTolerance, 0, 90, (decimal)m.AngleToleranceDeg, 2, 0.1M, grpInspectionSettings); y += 10;
-
-            grpInspectionSettings.Controls.Add(new Label { Text = "--- エッジ間距離 測定設定 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Olive }); y += 22;
-            AddRect("左エッジ ROI:", ref _nudJigLX, ref _nudJigLY, ref _nudJigLW, ref _nudJigLH, m.JigLeftRoi, grpInspectionSettings);
-            AddRect("右エッジ ROI:", ref _nudJigRX, ref _nudJigRY, ref _nudJigRW, ref _nudJigRH, m.JigRightRoi, grpInspectionSettings);
-            AddN("エッジ目標距離(mm):", ref _nudJigTarget, 0, 500, (decimal)m.TargetJigDistanceMm, 2, 0.1M, grpInspectionSettings);
-            AddN("エッジ許容誤差(mm):", ref _nudJigTolerance, 0, 50, (decimal)m.JigToleranceMm, 2, 0.1M, grpInspectionSettings); y += 10;
-
-            grpInspectionSettings.Controls.Add(new Label { Text = "--- 下部測定 ROI ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkGoldenrod }); y += 22;
-            AddRect("Btm線 ROI(黄):", ref _nudBtmRoiX, ref _nudBtmRoiY, ref _nudBtmRoiW, ref _nudBtmRoiH, m.BtmMeasureRoi, grpInspectionSettings);
-            AddRect("Btm内側左 ROI(赤):", ref _nudBtmInnerLX, ref _nudBtmInnerLY, ref _nudBtmInnerLW, ref _nudBtmInnerLH, m.BtmInnerLeftRoi, grpInspectionSettings);
-            AddRect("Btm内側右 ROI(赤):", ref _nudBtmInnerRX, ref _nudBtmInnerRY, ref _nudBtmInnerRW, ref _nudBtmInnerRH, m.BtmInnerRightRoi, grpInspectionSettings); y += 10;
-
-            GroupBox grpCalibration = new GroupBox { Text = "キャリブレーション (Pixel/mm比率)", Location = new Point(10, 770), Size = new Size(540, 150) };
-            tab.Controls.Add(grpCalibration);
-            y = 20;
-
-            _lblCurrentHoleDistPx = new Label { Text = "現在の穴/エッジ間距離: 0.0 px", Location = new Point(10, y), Size = new Size(300, 20), ForeColor = Color.DarkOrange, Font = new Font(this.Font, FontStyle.Bold) };
-            grpCalibration.Controls.Add(_lblCurrentHoleDistPx); y += lh;
-            _nudActualWidthMm = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = 0.1M, Maximum = 500, Value = 50, DecimalPlaces = 2, Increment = 0.1M };
-            grpCalibration.Controls.Add(new Label { Text = "実測の距離(mm):", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); grpCalibration.Controls.Add(_nudActualWidthMm); y += lh;
-            _btnCalcRatio = new Button { Text = "比率を自動計算", Location = new Point(10, y), Size = new Size(360, 30), BackColor = Color.LightYellow };
-            _btnCalcRatio.Click += (s, e) => {
-                if (m.LastHoleDistancePx <= 0) { MessageBox.Show("先にテスト実行して検出させてください。"); return; }
-                _nudPixelToMm.Value = _nudActualWidthMm.Value / (decimal)m.LastHoleDistancePx;
-                MessageBox.Show("更新しました。各種目標(mm)を再設定してください。");
-            }; grpCalibration.Controls.Add(_btnCalcRatio); y += 45;
-            AddN("Pixel->mm比率:", ref _nudPixelToMm, 0.0001M, 1, (decimal)m.PixelToMmRatio, 5, 0.001M, grpCalibration);
-        }
-
-        private void InitializeDebugTab(TabPage tab)
-        {
-            int y = 10;
-            var m = _measurement;
-            int lw = 150, cw = 100, lh = 28;
-            void AddN(string txt, ref NumericUpDown n, decimal min, decimal max, decimal val, int dp = 0, decimal step = 1M)
-            {
-                tab.Controls.Add(new Label { Text = txt, Location = new Point(10, y + 2), Size = new Size(lw, 20) });
-                n = new NumericUpDown { Location = new Point(10 + lw, y), Size = new Size(cw, 20), Minimum = min, Maximum = max, Value = val, DecimalPlaces = dp, Increment = step };
-                n.ValueChanged += (s, e) => UpdateSettingsFromUI(); tab.Controls.Add(n); y += lh;
-            }
-
-            _pictureBoxDebug = new PictureBox { Location = new Point(10, y), Size = new Size(380, 280), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black, BorderStyle = BorderStyle.FixedSingle };
-            tab.Controls.Add(_pictureBoxDebug); y += 300;
-
-            tab.Controls.Add(new Label { Text = "--- ★外形エッジ(青枠) 専用閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Teal }); y += 22;
-            AddN("左エッジ(青) 閾値:", ref _nudThreshOuterL, 0, 255, m.ThreshOuterL, 0, 1M);
-            AddN("右エッジ(青) 閾値:", ref _nudThreshOuterR, 0, 255, m.ThreshOuterR, 0, 1M); y += 10;
-
-            tab.Controls.Add(new Label { Text = "--- ★BTM内側(赤枠) 専用閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.DarkRed }); y += 22;
-            AddN("左内側(赤) 閾値:", ref _nudThreshBtmInnerL, 0, 255, m.ThreshBtmInnerL, 0, 1M);
-            AddN("右内側(赤) 閾値:", ref _nudThreshBtmInnerR, 0, 255, m.ThreshBtmInnerR, 0, 1M); y += 10;
-
-            tab.Controls.Add(new Label { Text = "--- ★4分割 二値化 閾値調整 ---", Location = new Point(10, y), AutoSize = true, ForeColor = Color.Blue }); y += 22;
-            AddN("上下分割 Y境界線:", ref _nudSplitY, 0, 3000, m.SplitBoundaryY, 0, 1M);
-            AddN("左右分割 X境界線:", ref _nudSplitX, 0, 3000, m.SplitBoundaryX, 0, 1M);
-            AddN("左上 (TL) 閾値:", ref _nudThreshTL, 0, 255, m.ThreshTopLeft, 0, 1M);
-            AddN("右上 (TR) 閾値:", ref _nudThreshTR, 0, 255, m.ThreshTopRight, 0, 1M);
-            AddN("左下 (BL) 閾値:", ref _nudThreshBL, 0, 255, m.ThreshBtmLeft, 0, 1M);
-            AddN("右下 (BR) 閾値:", ref _nudThreshBR, 0, 255, m.ThreshBtmRight, 0, 1M);
-        }
 
         private void Form1_Load(object? sender, EventArgs e)
         {
@@ -1391,7 +920,7 @@ namespace InspectionSystem_GenericBase
                     {
                         _measurement.GetDebugImage(binImg);
                     }
-                    if (!binImg.Empty())
+                    if (!binImg.Empty() && _pictureBoxDebug != null && !_pictureBoxDebug.IsDisposed)
                     {
                         Bitmap bmpD = BitmapConverter.ToBitmap(binImg); Image? oldD = _pictureBoxDebug.Image; _pictureBoxDebug.Image = bmpD; oldD?.Dispose();
                     }
@@ -1524,8 +1053,10 @@ namespace InspectionSystem_GenericBase
 
             m.ThreshBtmInnerL = (int)_nudThreshBtmInnerL.Value; m.ThreshBtmInnerR = (int)_nudThreshBtmInnerR.Value;
 
-            m.TargetOuterXOffsetMm = (double)_nudOuterTargetX.Value; m.OuterOffsetToleranceMm = (double)_nudOuterOffsetX.Value;
-            m.TargetOuterAngleDeg = (double)_nudOuterTargetA.Value; m.OuterAngleToleranceDeg = (double)_nudOuterOffsetA.Value;
+            if (_nudOuterTargetX != null) m.TargetOuterXOffsetMm = (double)_nudOuterTargetX.Value;
+            if (_nudOuterOffsetX != null) m.OuterOffsetToleranceMm = (double)_nudOuterOffsetX.Value;
+            if (_nudOuterTargetA != null) m.TargetOuterAngleDeg = (double)_nudOuterTargetA.Value;
+            if (_nudOuterOffsetA != null) m.OuterAngleToleranceDeg = (double)_nudOuterOffsetA.Value;
 
             m.BtmMeasureRoi = new CvRect((int)_nudBtmRoiX.Value, (int)_nudBtmRoiY.Value, (int)_nudBtmRoiW.Value, (int)_nudBtmRoiH.Value);
             m.BtmInnerLeftRoi = new CvRect((int)_nudBtmInnerLX.Value, (int)_nudBtmInnerLY.Value, (int)_nudBtmInnerLW.Value, (int)_nudBtmInnerLH.Value);
@@ -1539,10 +1070,13 @@ namespace InspectionSystem_GenericBase
             m.JigLeftRoi = new CvRect((int)_nudJigLX.Value, (int)_nudJigLY.Value, (int)_nudJigLW.Value, (int)_nudJigLH.Value);
             m.JigRightRoi = new CvRect((int)_nudJigRX.Value, (int)_nudJigRY.Value, (int)_nudJigRW.Value, (int)_nudJigRH.Value);
 
-            m.TargetJigDistanceMm = (double)_nudJigTarget.Value; m.JigToleranceMm = (double)_nudJigTolerance.Value;
+            if (_nudJigTarget != null) m.TargetJigDistanceMm = (double)_nudJigTarget.Value;
+            if (_nudJigTolerance != null) m.JigToleranceMm = (double)_nudJigTolerance.Value;
             m.PixelToMmRatio = (double)_nudPixelToMm.Value;
-            m.TargetXOffsetMm = (double)_nudTargetXOffset.Value; m.OffsetToleranceMm = (double)_nudOffsetTolerance.Value;
-            m.TargetAngleDeg = (double)_nudTargetAngle.Value; m.AngleToleranceDeg = (double)_nudAngleTolerance.Value;
+            if (_nudTargetXOffset != null) m.TargetXOffsetMm = (double)_nudTargetXOffset.Value;
+            if (_nudOffsetTolerance != null) m.OffsetToleranceMm = (double)_nudOffsetTolerance.Value;
+            if (_nudTargetAngle != null) m.TargetAngleDeg = (double)_nudTargetAngle.Value;
+            if (_nudAngleTolerance != null) m.AngleToleranceDeg = (double)_nudAngleTolerance.Value;
         }
 
         private void LoadSettingsToUI()
@@ -1552,9 +1086,9 @@ namespace InspectionSystem_GenericBase
             {
                 var m = _measurement;
 
-                _chkEnableJigCheck.Checked = m.EnableJigCheck;
-                _chkEnableOuterTiltCheck.Checked = m.EnableOuterTiltCheck;
-                _chkEnableHoleCheck.Checked = m.EnableHoleCheck;
+                if (_chkEnableJigCheck != null) _chkEnableJigCheck.Checked = m.EnableJigCheck;
+                if (_chkEnableOuterTiltCheck != null) _chkEnableOuterTiltCheck.Checked = m.EnableOuterTiltCheck;
+                if (_chkEnableHoleCheck != null) _chkEnableHoleCheck.Checked = m.EnableHoleCheck;
 
                 _nudTiltLX.Value = m.TiltLeftRoi.X; _nudTiltLY.Value = m.TiltLeftRoi.Y; _nudTiltLW.Value = m.TiltLeftRoi.Width; _nudTiltLH.Value = m.TiltLeftRoi.Height;
                 _nudTiltRX.Value = m.TiltRightRoi.X; _nudTiltRY.Value = m.TiltRightRoi.Y; _nudTiltRW.Value = m.TiltRightRoi.Width; _nudTiltRH.Value = m.TiltRightRoi.Height;
@@ -1562,8 +1096,10 @@ namespace InspectionSystem_GenericBase
 
                 _nudThreshBtmInnerL.Value = m.ThreshBtmInnerL; _nudThreshBtmInnerR.Value = m.ThreshBtmInnerR;
 
-                _nudOuterTargetX.Value = (decimal)m.TargetOuterXOffsetMm; _nudOuterOffsetX.Value = (decimal)m.OuterOffsetToleranceMm;
-                _nudOuterTargetA.Value = (decimal)m.TargetOuterAngleDeg; _nudOuterOffsetA.Value = (decimal)m.OuterAngleToleranceDeg;
+                if (_nudOuterTargetX != null) _nudOuterTargetX.Value = (decimal)m.TargetOuterXOffsetMm;
+                if (_nudOuterOffsetX != null) _nudOuterOffsetX.Value = (decimal)m.OuterOffsetToleranceMm;
+                if (_nudOuterTargetA != null) _nudOuterTargetA.Value = (decimal)m.TargetOuterAngleDeg;
+                if (_nudOuterOffsetA != null) _nudOuterOffsetA.Value = (decimal)m.OuterAngleToleranceDeg;
 
                 _nudBtmRoiX.Value = m.BtmMeasureRoi.X; _nudBtmRoiY.Value = m.BtmMeasureRoi.Y; _nudBtmRoiW.Value = m.BtmMeasureRoi.Width; _nudBtmRoiH.Value = m.BtmMeasureRoi.Height;
                 _nudBtmInnerLX.Value = m.BtmInnerLeftRoi.X; _nudBtmInnerLY.Value = m.BtmInnerLeftRoi.Y; _nudBtmInnerLW.Value = m.BtmInnerLeftRoi.Width; _nudBtmInnerLH.Value = m.BtmInnerLeftRoi.Height;
@@ -1578,10 +1114,13 @@ namespace InspectionSystem_GenericBase
                 _nudJigLX.Value = m.JigLeftRoi.X; _nudJigLY.Value = m.JigLeftRoi.Y; _nudJigLW.Value = m.JigLeftRoi.Width; _nudJigLH.Value = m.JigLeftRoi.Height;
                 _nudJigRX.Value = m.JigRightRoi.X; _nudJigRY.Value = m.JigRightRoi.Y; _nudJigRW.Value = m.JigRightRoi.Width; _nudJigRH.Value = m.JigRightRoi.Height;
 
-                _nudJigTarget.Value = (decimal)m.TargetJigDistanceMm; _nudJigTolerance.Value = (decimal)m.JigToleranceMm;
-                _nudPixelToMm.Value = (decimal)m.PixelToMmRatio;
-                _nudTargetXOffset.Value = (decimal)m.TargetXOffsetMm; _nudOffsetTolerance.Value = (decimal)m.OffsetToleranceMm;
-                _nudTargetAngle.Value = (decimal)m.TargetAngleDeg; _nudAngleTolerance.Value = (decimal)m.AngleToleranceDeg;
+                if (_nudJigTarget != null) _nudJigTarget.Value = (decimal)m.TargetJigDistanceMm;
+                if (_nudJigTolerance != null) _nudJigTolerance.Value = (decimal)m.JigToleranceMm;
+                if (_nudPixelToMm != null) _nudPixelToMm.Value = (decimal)m.PixelToMmRatio;
+                if (_nudTargetXOffset != null) _nudTargetXOffset.Value = (decimal)m.TargetXOffsetMm;
+                if (_nudOffsetTolerance != null) _nudOffsetTolerance.Value = (decimal)m.OffsetToleranceMm;
+                if (_nudTargetAngle != null) _nudTargetAngle.Value = (decimal)m.TargetAngleDeg;
+                if (_nudAngleTolerance != null) _nudAngleTolerance.Value = (decimal)m.AngleToleranceDeg;
             }
             catch { }
             finally { _isUpdatingUI = false; }
@@ -1672,13 +1211,24 @@ namespace InspectionSystem_GenericBase
                 _saveRoi = new CvRect(GetI("SaveRoiX", _saveRoi.X), GetI("SaveRoiY", _saveRoi.Y), GetI("SaveRoiW", _saveRoi.Width), GetI("SaveRoiH", _saveRoi.Height));
                 _logKeepDays = GetI("LogKeepDays", _logKeepDays);
 
-                _cmbTriggerMode.SelectedIndex = _triggerOnBright ? 0 : 1; _cmbSaveMode.SelectedIndex = _saveMode;
-                _nudTriggerThreshold.Value = (decimal)_triggerThreshold; _nudStabilityDuration.Value = _stabilityDurationMs;
-                _nudPlcDelayMs.Value = _plcDelayMs; _nudRetryCount.Value = _maxRetryCount; _nudRetryDelayMs.Value = _retryDelayMs;
-                _nudAutoStartCount.Value = _autoStartCount; _nudResetThreshold.Value = (decimal)_resetThreshold;
-                _nudRoiX.Value = _roi.X; _nudRoiY.Value = _roi.Y; _nudRoiW.Value = _roi.Width; _nudRoiH.Value = _roi.Height;
-                _nudSaveRoiX.Value = _saveRoi.X; _nudSaveRoiY.Value = _saveRoi.Y; _nudSaveRoiW.Value = _saveRoi.Width; _nudSaveRoiH.Value = _saveRoi.Height;
-                _nudLogKeepDays.Value = _logKeepDays;
+                if (_cmbTriggerMode != null) _cmbTriggerMode.SelectedIndex = _triggerOnBright ? 0 : 1;
+                if (_cmbSaveMode != null) _cmbSaveMode.SelectedIndex = _saveMode;
+                if (_nudTriggerThreshold != null) _nudTriggerThreshold.Value = (decimal)_triggerThreshold;
+                if (_nudStabilityDuration != null) _nudStabilityDuration.Value = _stabilityDurationMs;
+                if (_nudPlcDelayMs != null) _nudPlcDelayMs.Value = _plcDelayMs;
+                if (_nudRetryCount != null) _nudRetryCount.Value = _maxRetryCount;
+                if (_nudRetryDelayMs != null) _nudRetryDelayMs.Value = _retryDelayMs;
+                if (_nudAutoStartCount != null) _nudAutoStartCount.Value = _autoStartCount;
+                if (_nudResetThreshold != null) _nudResetThreshold.Value = (decimal)_resetThreshold;
+                if (_nudRoiX != null) _nudRoiX.Value = _roi.X;
+                if (_nudRoiY != null) _nudRoiY.Value = _roi.Y;
+                if (_nudRoiW != null) _nudRoiW.Value = _roi.Width;
+                if (_nudRoiH != null) _nudRoiH.Value = _roi.Height;
+                if (_nudSaveRoiX != null) _nudSaveRoiX.Value = _saveRoi.X;
+                if (_nudSaveRoiY != null) _nudSaveRoiY.Value = _saveRoi.Y;
+                if (_nudSaveRoiW != null) _nudSaveRoiW.Value = _saveRoi.Width;
+                if (_nudSaveRoiH != null) _nudSaveRoiH.Value = _saveRoi.Height;
+                if (_nudLogKeepDays != null) _nudLogKeepDays.Value = _logKeepDays;
 
                 LoadSettingsToUI();
             }
@@ -1686,7 +1236,7 @@ namespace InspectionSystem_GenericBase
             finally { _isLoadingConfig = false; }
         }
 
-        private void SaveConfig()
+        internal void SaveConfig()
         {
             try
             {
