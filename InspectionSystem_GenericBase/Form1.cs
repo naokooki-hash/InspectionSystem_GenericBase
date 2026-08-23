@@ -161,13 +161,13 @@ namespace InspectionSystem_GenericBase
             this.StartPosition = FormStartPosition.CenterScreen;
 
             // 1台カメラ用メイン表示領域の最大化（1280x780）
-            _pictureBoxMain = new PictureBox 
-            { 
-                Location = new Point(10, 10), 
-                Size = new Size(1280, 780), 
-                SizeMode = PictureBoxSizeMode.Zoom, 
-                BackColor = Color.Black, 
-                BorderStyle = BorderStyle.FixedSingle 
+            _pictureBoxMain = new PictureBox
+            {
+                Location = new Point(10, 10),
+                Size = new Size(1280, 780),
+                SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = Color.Black,
+                BorderStyle = BorderStyle.FixedSingle
             };
             this.Controls.Add(_pictureBoxMain);
 
@@ -521,7 +521,7 @@ namespace InspectionSystem_GenericBase
             _plc.Disconnect(); SaveConfig();
         }
 
-        private void AppendDailyLog(int result, double brightness)
+        private void AppendDailyLog(InspectionResult result)
         {
             try
             {
@@ -535,11 +535,18 @@ namespace InspectionSystem_GenericBase
                 {
                     if (isNewFile)
                     {
-                        sw.WriteLine("時刻,判定,総検査数,良品数(OK),不良数(NG),トリガー時輝度(実測値)");
+                        var measurementKeys = result.Measurements.Keys.ToList();
+                        string header = "日時,総合判定,不合格理由(結合文字列)," + string.Join(",", measurementKeys);
+                        sw.WriteLine(header);
                     }
 
-                    string resStr = (result == 1) ? "OK" : "NG";
-                    sw.WriteLine($"{DateTime.Now:HH:mm:ss},{resStr},{_totalCount},{_okCount},{_ngCount},{brightness:F2}");
+                    string resStr = result.IsOk ? "OK" : "NG";
+                    string reasons = result.FailureReasons.Count > 0 ? "\"" + string.Join(" | ", result.FailureReasons).Replace("\"", "\"\"") + "\"" : "";
+
+                    var measurementValues = result.Measurements.Values.Select(v => v.ToString("F3")).ToList();
+
+                    string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff},{resStr},{reasons}," + string.Join(",", measurementValues);
+                    sw.WriteLine(line);
                 }
             }
             catch { }
@@ -666,8 +673,8 @@ namespace InspectionSystem_GenericBase
                         _measurement.DebugRoi = _saveRoi;
                         _measurement.IsDebugMode = isDebug;
                         InspectionResult manualResult = _inspectionEngine.Inspect(frame);
-                        SafeInvoke(() => UpdateResultDisplay(manualResult.IsOk ? 1 : 2, true, b));
-                        
+                        SafeInvoke(() => UpdateResultDisplay(manualResult, true, b));
+
                         _lastInspectionResult?.Dispose();
                         _lastInspectionResult = manualResult;
                         _pendingSaveResult = manualResult.IsOk ? 1 : 2;
@@ -684,11 +691,13 @@ namespace InspectionSystem_GenericBase
                         {
                             Task.Run(() => _plc.WriteDevice(camSettings.ReadDeviceAddress, 0));
                         }
-                        
+
                         _lastInspectionResult?.Dispose();
-                        _lastInspectionResult = null;
-                        
-                        SafeInvoke(() => UpdateResultDisplay(forceOkResult, true, b));
+                        var dummyResultOk = new InspectionResult { IsOk = true, ResultText = "OK" };
+                        dummyResultOk.OutputImage = frame.Clone();
+                        _lastInspectionResult = dummyResultOk;
+
+                        SafeInvoke(() => UpdateResultDisplay(dummyResultOk, true, b));
                         _pendingSaveResult = forceOkResult;
                         forceUiUpdate = true;
                     }
@@ -704,11 +713,13 @@ namespace InspectionSystem_GenericBase
                         {
                             Task.Run(() => _plc.WriteDevice(camSettings.ReadDeviceAddress, 0));
                         }
-                        
+
                         _lastInspectionResult?.Dispose();
-                        _lastInspectionResult = null;
-                        
-                        SafeInvoke(() => UpdateResultDisplay(forceNgResult, true, b));
+                        var dummyResultNg = new InspectionResult { IsOk = false, ResultText = "ERR" };
+                        dummyResultNg.OutputImage = frame.Clone();
+                        _lastInspectionResult = dummyResultNg;
+
+                        SafeInvoke(() => UpdateResultDisplay(dummyResultNg, true, b));
                         _pendingSaveResult = forceNgResult;
                         forceUiUpdate = true;
                     }
@@ -911,8 +922,8 @@ namespace InspectionSystem_GenericBase
                 AppendLog("【不合格理由】: " + string.Join(" / ", result.FailureReasons));
             }
 
-            SafeInvoke(() => UpdateResultDisplay(result.IsOk ? 1 : 2, false, brightness));
-            
+            SafeInvoke(() => UpdateResultDisplay(result, false, brightness));
+
             _lastInspectionResult?.Dispose();
             _lastInspectionResult = result;
             _pendingSaveResult = result.IsOk ? 1 : 2;
@@ -965,26 +976,31 @@ namespace InspectionSystem_GenericBase
                     }
                 }
 
-                if (_pendingSaveResult != -1) { if (_saveMode == 2 || (_saveMode == 1 && _pendingSaveResult != 1)) SaveInspectionImage(disp, _pendingSaveResult); _pendingSaveResult = -1; }
+                if (_pendingSaveResult != -1 && _lastInspectionResult != null) {
+                    if (_saveMode == 2 || (_saveMode == 1 && _pendingSaveResult != 1)) {
+                        SaveInspectionImage(_lastInspectionResult);
+                    }
+                    _pendingSaveResult = -1;
+                }
                 Bitmap bmp = BitmapConverter.ToBitmap(disp); Image? old = _pictureBoxMain.Image; _pictureBoxMain.Image = bmp; old?.Dispose();
             }
-            if (isDebug) 
-            { 
-                using (Mat binImg = new Mat()) 
-                { 
+            if (isDebug)
+            {
+                using (Mat binImg = new Mat())
+                {
                     if (_lastInspectionResult != null && _lastInspectionResult.BinaryImage != null && !_lastInspectionResult.BinaryImage.Empty())
                     {
                         _lastInspectionResult.BinaryImage.CopyTo(binImg);
                     }
                     else
                     {
-                        _measurement.GetDebugImage(binImg); 
+                        _measurement.GetDebugImage(binImg);
                     }
-                    if (!binImg.Empty()) 
-                    { 
-                        Bitmap bmpD = BitmapConverter.ToBitmap(binImg); Image? oldD = _pictureBoxDebug.Image; _pictureBoxDebug.Image = bmpD; oldD?.Dispose(); 
-                    } 
-                } 
+                    if (!binImg.Empty())
+                    {
+                        Bitmap bmpD = BitmapConverter.ToBitmap(binImg); Image? oldD = _pictureBoxDebug.Image; _pictureBoxDebug.Image = bmpD; oldD?.Dispose();
+                    }
+                }
             }
             if (_lblCurrentHoleDistPx != null && !_lblCurrentHoleDistPx.IsDisposed && _measurement.LastHoleDistancePx > 0) _lblCurrentHoleDistPx.Text = "現在の穴/エッジ間距離: " + _measurement.LastHoleDistancePx.ToString("F1") + " px";
 
@@ -999,22 +1015,65 @@ namespace InspectionSystem_GenericBase
             if (_lblFps != null && !_lblFps.IsDisposed) _lblFps.Text = _currentFpsText;
         }
 
-        private void SaveInspectionImage(Mat img, int res)
+        private void SaveInspectionImage(InspectionResult result)
         {
-            try { Mat imgToSave = img.Clone(); Task.Run(() => { try { string dir = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd")); if (!Directory.Exists(dir)) Directory.CreateDirectory(dir); string resStr = (res == 1) ? "OK" : "NG"; string fileName = string.Format("{0:HHmmss_fff}_{1}.jpg", DateTime.Now, resStr); string path = Path.Combine(dir, fileName); CvRect crop = _saveRoi & new CvRect(0, 0, imgToSave.Width, imgToSave.Height); using (Mat cropped = new Mat(imgToSave, crop)) using (Mat resized = new Mat()) { Cv2.Resize(cropped, resized, new CvSize(cropped.Width / 2, cropped.Height / 2)); var p = new ImageEncodingParam(ImwriteFlags.JpegQuality, 65); Cv2.ImWrite(path, resized, p); } } catch { } finally { if (imgToSave != null && !imgToSave.IsDisposed) imgToSave.Dispose(); } }); } catch { }
+            if (result == null || result.OutputImage == null) return;
+
+            try
+            {
+                Mat outputClone = result.OutputImage.Clone();
+                Mat? binaryClone = result.BinaryImage?.Clone();
+
+                Task.Run(() => {
+                    try
+                    {
+                        string baseDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SavedImages", DateTime.Now.ToString("yyyy-MM-dd"));
+                        if (!Directory.Exists(baseDir)) Directory.CreateDirectory(baseDir);
+
+                        string resStr = result.IsOk ? "OK" : "NG";
+                        string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
+
+                        string outPath = Path.Combine(baseDir, $"{timestamp}_{resStr}_Result.png");
+
+                        CvRect crop = _saveRoi & new CvRect(0, 0, outputClone.Width, outputClone.Height);
+                        using (Mat cropped = new Mat(outputClone, crop))
+                        {
+                            var p = new ImageEncodingParam(ImwriteFlags.PngCompression, 3);
+                            Cv2.ImWrite(outPath, cropped, p);
+                        }
+
+                        if (binaryClone != null && !binaryClone.Empty())
+                        {
+                            string binPath = Path.Combine(baseDir, $"{timestamp}_{resStr}_Binary.png");
+                            CvRect binCrop = _saveRoi & new CvRect(0, 0, binaryClone.Width, binaryClone.Height);
+                            using (Mat binCropped = new Mat(binaryClone, binCrop))
+                            {
+                                var p = new ImageEncodingParam(ImwriteFlags.PngCompression, 3);
+                                Cv2.ImWrite(binPath, binCropped, p);
+                            }
+                        }
+                    }
+                    catch { }
+                    finally
+                    {
+                        outputClone?.Dispose();
+                        binaryClone?.Dispose();
+                    }
+                });
+            } catch { }
         }
 
-        private void UpdateResultDisplay(int res, bool manual, double brightness = 0.0)
+        private void UpdateResultDisplay(InspectionResult result, bool manual, double brightness = 0.0)
         {
             if (_lblBigResult == null || _lblBigResult.IsDisposed) return;
-            _lblBigResult.Text = (res == 1 ? "OK" : "NG");
-            _lblBigResult.BackColor = res == 1 ? Color.LimeGreen : Color.Red;
+            _lblBigResult.Text = (result.IsOk ? "OK" : "NG");
+            _lblBigResult.BackColor = result.IsOk ? Color.LimeGreen : Color.Red;
             if (!manual)
             {
                 _totalCount++;
-                if (res == 1) _okCount++; else _ngCount++;
+                if (result.IsOk) _okCount++; else _ngCount++;
                 UpdateCounterDisplay();
-                AppendDailyLog(res, brightness);
+                AppendDailyLog(result);
             }
         }
 

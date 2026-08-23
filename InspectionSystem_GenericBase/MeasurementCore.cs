@@ -6,6 +6,8 @@ using OpenCvSharp;
 using CvPoint = OpenCvSharp.Point;
 using CvRect = OpenCvSharp.Rect;
 using CvSize = OpenCvSharp.Size;
+using System.Drawing;
+using OpenCvSharp.Extensions;
 
 namespace InspectionSystem_GenericBase
 {
@@ -661,6 +663,40 @@ namespace InspectionSystem_GenericBase
                 inputFrame.CopyTo(output);
 
             DrawOverlay(output);
+
+            // 日本語のNG理由をSystem.Drawingでオーバーレイ描画する
+            if (!result.IsOk && reasons.Count > 0)
+            {
+                using (Bitmap bmp = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(output))
+                {
+                    using (Graphics g = Graphics.FromImage(bmp))
+                    {
+                        using (Font font = new Font("MS UI Gothic", 24, FontStyle.Bold))
+                        using (Font reasonFont = new Font("MS UI Gothic", 16, FontStyle.Bold))
+                        using (SolidBrush bgBrush = new SolidBrush(Color.FromArgb(180, Color.Black)))
+                        {
+                            g.FillRectangle(bgBrush, new Rectangle(10, 10, 600, 50 + (reasons.Count * 30)));
+                            g.DrawString("【NG 判定理由】", font, Brushes.Red, new PointF(15, 15));
+
+                            int yOffset = 50;
+                            foreach (var r in reasons)
+                            {
+                                g.DrawString("・" + r, reasonFont, Brushes.Yellow, new PointF(20, 15 + yOffset));
+                                yOffset += 30;
+                            }
+
+                            // 画面全体を赤枠で囲む
+                            using (Pen redPen = new Pen(Color.Red, 10))
+                            {
+                                g.DrawRectangle(redPen, 0, 0, bmp.Width - 1, bmp.Height - 1);
+                            }
+                        }
+                    }
+                    output.Dispose();
+                    output = OpenCvSharp.Extensions.BitmapConverter.ToMat(bmp);
+                }
+            }
+
             result.OutputImage = output;
 
             // 二値化デバッグ画像の設定
