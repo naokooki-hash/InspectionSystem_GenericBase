@@ -9,7 +9,7 @@ using UI_Color = System.Drawing.Color;
 using UI_Font = System.Drawing.Font;
 using UI_FontStyle = System.Drawing.FontStyle;
 
-namespace _20260224SolderInspec
+namespace InspectionSystem_GenericBase
 {
     public class FormDashboard : Form
     {

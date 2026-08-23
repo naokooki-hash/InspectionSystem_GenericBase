@@ -6,11 +6,18 @@ using OpenCvSharp;
 using CvPoint = OpenCvSharp.Point;
 using CvRect = OpenCvSharp.Rect;
 using CvSize = OpenCvSharp.Size;
+using System.Drawing;
+using OpenCvSharp.Extensions;
 
-namespace _20260224SolderInspec
+namespace InspectionSystem_GenericBase
 {
-    public class MeasurementCore
+    public class MeasurementCore : IInspectionEngine
     {
+        public string EngineName => "Punching Metal Inspection Engine";
+
+        // 外部からトリガーされる際の領域指定およびデバッグフラグ
+        public CvRect DebugRoi { get; set; } = new CvRect(100, 50, 440, 380);
+        public bool IsDebugMode { get; set; } = false;
         // 検査モードの有効/無効
         public bool EnableJigCheck { get; set; } = true;
         public bool EnableOuterTiltCheck { get; set; } = true;
@@ -561,6 +568,143 @@ namespace _20260224SolderInspec
                 Cv2.Line(dispMat, new CvPoint(_jigLeftEdgeX, midY), new CvPoint(_jigRightEdgeX, midY), edgeCol, 1, LineTypes.AntiAlias);
                 Cv2.PutText(dispMat, IsJigOk ? $"EDGE OK ({LastJigDistanceMm:F1}mm)" : $"EDGE ERR ({LastJigDistanceMm:F1}mm)", new CvPoint(_jigLeftEdgeX, JigLeftRoi.Y - 10), HersheyFonts.HersheySimplex, 0.8, edgeCol, 2);
             }
+        }
+
+        public InspectionResult Inspect(Mat inputFrame)
+        {
+            int resultCode = Inspect(inputFrame, DebugRoi, IsDebugMode);
+
+            var result = new InspectionResult
+            {
+                ProcessedTime = DateTime.Now,
+                IsOk = (resultCode == 1)
+            };
+
+            if (resultCode == 1) result.ResultText = "OK";
+            else if (resultCode == 2) result.ResultText = "NG";
+            else result.ResultText = "ERR";
+
+            var reasons = new List<string>();
+            var measurements = new Dictionary<string, double>();
+
+            if (EnableJigCheck)
+            {
+                measurements["JigDistanceMm"] = LastJigDistanceMm;
+                if (!_jigEdgeDetected)
+                {
+                    reasons.Add("エッジ測定対象が検出できませんでした。");
+                }
+                else if (!IsJigOk)
+                {
+                    reasons.Add($"エッジ間距離が許容範囲外です (測定値: {LastJigDistanceMm:F2} mm, 目標: {TargetJigDistanceMm:F2} mm)");
+                }
+            }
+
+            bool isBtmDetected = (_btmCenter.X != 0);
+            if (!isBtmDetected)
+            {
+                reasons.Add("下部基準線が検出できませんでした。");
+            }
+            else
+            {
+                if (EnableOuterTiltCheck)
+                {
+                    measurements["OuterAngleDeg"] = LastOuterAngleDeg;
+                    measurements["OuterOffsetMm"] = _lastOuterOffsetMm;
+
+                    if (!_tiltEdgesFound)
+                    {
+                        reasons.Add("外形エッジが検出できませんでした。");
+                    }
+                    else
+                    {
+                        if (!_isOuterOffsetOk)
+                        {
+                            reasons.Add($"外形Xズレが許容値を超えています (測定値: {_lastOuterOffsetMm:F2} mm, 目標: {TargetOuterXOffsetMm:F2} mm)");
+                        }
+                        if (!_isOuterAngleOk)
+                        {
+                            reasons.Add($"外形傾き角度が許容値を超えています (測定値: {LastOuterAngleDeg:F2} deg, 目標: {TargetOuterAngleDeg:F2} deg)");
+                        }
+                    }
+                }
+
+                if (EnableHoleCheck)
+                {
+                    measurements["HoleAngleDeg"] = LastHoleAngleDeg;
+                    measurements["HoleOffsetMm"] = _lastHoleOffsetMm;
+
+                    if (_detectedHoles.Count < 2)
+                    {
+                        reasons.Add("基準穴が2個以上検出できませんでした。");
+                    }
+                    else
+                    {
+                        if (!_isHoleOffsetOk)
+                        {
+                            reasons.Add($"穴Xズレが許容値を超えています (測定値: {_lastHoleOffsetMm:F2} mm, 目標: {TargetXOffsetMm:F2} mm)");
+                        }
+                        if (!_isHoleAngleOk)
+                        {
+                            reasons.Add($"穴傾き角度が許容値を超えています (測定値: {LastHoleAngleDeg:F2} deg, 目標: {TargetAngleDeg:F2} deg)");
+                        }
+                    }
+                }
+            }
+
+            result.FailureReasons = reasons;
+            result.Measurements = measurements;
+
+            // 出力画像の作成と描画
+            Mat output = new Mat();
+            if (inputFrame.Channels() == 1)
+                Cv2.CvtColor(inputFrame, output, ColorConversionCodes.GRAY2BGR);
+            else
+                inputFrame.CopyTo(output);
+
+            DrawOverlay(output);
+
+            // 日本語のNG理由をSystem.Drawingでオーバーレイ描画する
+            if (!result.IsOk && reasons.Count > 0)
+            {
+                using (Bitmap bmp = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(output))
+                {
+                    using (Graphics g = Graphics.FromImage(bmp))
+                    {
+                        using (Font font = new Font("MS UI Gothic", 24, FontStyle.Bold))
+                        using (Font reasonFont = new Font("MS UI Gothic", 16, FontStyle.Bold))
+                        using (SolidBrush bgBrush = new SolidBrush(Color.FromArgb(180, Color.Black)))
+                        {
+                            g.FillRectangle(bgBrush, new Rectangle(10, 10, 600, 50 + (reasons.Count * 30)));
+                            g.DrawString("【NG 判定理由】", font, Brushes.Red, new PointF(15, 15));
+
+                            int yOffset = 50;
+                            foreach (var r in reasons)
+                            {
+                                g.DrawString("・" + r, reasonFont, Brushes.Yellow, new PointF(20, 15 + yOffset));
+                                yOffset += 30;
+                            }
+
+                            // 画面全体を赤枠で囲む
+                            using (Pen redPen = new Pen(Color.Red, 10))
+                            {
+                                g.DrawRectangle(redPen, 0, 0, bmp.Width - 1, bmp.Height - 1);
+                            }
+                        }
+                    }
+                    output.Dispose();
+                    output = OpenCvSharp.Extensions.BitmapConverter.ToMat(bmp);
+                }
+            }
+
+            result.OutputImage = output;
+
+            // 二値化デバッグ画像の設定
+            Mat bin = new Mat();
+            GetDebugImage(bin);
+            result.BinaryImage = bin;
+
+            return result;
         }
     }
 }

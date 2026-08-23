@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace _20260224SolderInspec
+namespace InspectionSystem_GenericBase
 {
     public class ProductionAnalyzer
     {

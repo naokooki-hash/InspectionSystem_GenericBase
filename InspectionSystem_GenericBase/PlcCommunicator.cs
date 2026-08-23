@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace _20260224SolderInspec
+namespace InspectionSystem_GenericBase
 {
     public class PlcCommunicator
     {

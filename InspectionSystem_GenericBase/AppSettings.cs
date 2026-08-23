@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 
-namespace _20260224SolderInspec
+namespace InspectionSystem_GenericBase
 {
     /// <summary>
     /// PLC通信およびトリガーモードを管理するための設定クラス
@@ -28,9 +28,8 @@ namespace _20260224SolderInspec
         public string PlcDataType { get; set; } = "Bit";             // "Bit" or "Word"
         public int HeartbeatAddress { get; set; } = 0;               // ハートビート用アドレス
 
-        // --- カメラ別設定 ---
-        public CameraSettings Cam1 { get; set; } = new CameraSettings { OkDeviceAddress = 100, NgDeviceAddress = 101, ReadDeviceAddress = 102, WriteDeviceAddress = 100 };
-        public CameraSettings Cam2 { get; set; } = new CameraSettings { OkDeviceAddress = 200, NgDeviceAddress = 201, ReadDeviceAddress = 202, WriteDeviceAddress = 200 };
+        // --- カメラ設定 ---
+        public CameraSettings Cam { get; set; } = new CameraSettings { OkDeviceAddress = 100, NgDeviceAddress = 101, ReadDeviceAddress = 102, WriteDeviceAddress = 100 };
 
         // --- 動作モード設定 ---
         public string TriggerMode { get; set; } = "Plc"; // "Plc" または "Visual"

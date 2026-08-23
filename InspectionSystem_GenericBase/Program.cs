@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Forms;
 
-namespace _20260224SolderInspec
+namespace InspectionSystem_GenericBase
 {
     internal static class Program
     {

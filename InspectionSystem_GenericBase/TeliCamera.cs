@@ -4,7 +4,7 @@ using OpenCvSharp;
 using Teli.TeliCamAPI.NET;
 using Teli.TeliCamAPI.NET.Utility;
 
-namespace _20260224SolderInspec
+namespace InspectionSystem_GenericBase
 {
     public class TeliCamera : IDisposable
     {
