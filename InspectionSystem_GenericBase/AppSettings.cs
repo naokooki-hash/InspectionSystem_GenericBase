@@ -34,6 +34,7 @@ namespace InspectionSystem_GenericBase
 
         // --- 動作モード設定 ---
         public string AdminPassword { get; set; } = "1234";
+        public string TestImageSaveFolder { get; set; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestImages");
         public string TriggerMode { get; set; } = "Plc"; // "Plc" または "Visual"
         public int InspectionIntervalMs { get; set; } = 500; // PLC監視の同期間隔(ms)
 

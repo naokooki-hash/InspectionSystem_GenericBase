@@ -40,8 +40,8 @@ namespace InspectionSystem_GenericBase
 
         private CheckBox _chkShowOverlay = null!, _chkEnableJigCheck = null!;
         private CheckBox _chkEnableOuterTiltCheck = null!, _chkEnableHoleCheck = null!;
-
-        private ComboBox _cmbTriggerMode = null!, _cmbSaveMode = null!;
+        private readonly object _rawFrameLock = new object();
+        private Mat? _latestRawFrame;
 
         private Button _btnRunToggle = null!;
         private bool _isRunning = false;
@@ -234,6 +234,52 @@ namespace InspectionSystem_GenericBase
             }
         }
 
+        internal void CaptureTestImage()
+        {
+            Mat? frameToSave = null;
+            lock (_rawFrameLock)
+            {
+                if (_latestRawFrame != null && !_latestRawFrame.Empty())
+                {
+                    frameToSave = _latestRawFrame.Clone();
+                }
+            }
+
+            if (frameToSave == null || frameToSave.Empty())
+            {
+                MessageBox.Show("カメラ映像が取得できていません。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            try
+            {
+                string folder = _appSettings.TestImageSaveFolder;
+                if (string.IsNullOrEmpty(folder))
+                {
+                    folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestImages");
+                }
+                if (!Directory.Exists(folder))
+                {
+                    Directory.CreateDirectory(folder);
+                }
+
+                string filename = $"TestImage_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png";
+                string filepath = Path.Combine(folder, filename);
+
+                // Save as raw original image
+                frameToSave.SaveImage(filepath);
+                AppendLog($"テスト用画像を保存しました: {filename}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"画像の保存に失敗しました: {ex.Message}", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                frameToSave?.Dispose();
+            }
+        }
+
         private void SetupRightPanelControls()
         {
             int x = 1310;
@@ -408,6 +454,20 @@ namespace InspectionSystem_GenericBase
             _ = MonitorPlcTriggerAsync();
             Task.Run(() => DeleteOldLogs());
             RestoreDailyCounter();
+
+            try
+            {
+                string folder = _appSettings.TestImageSaveFolder;
+                if (string.IsNullOrEmpty(folder))
+                {
+                    folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestImages");
+                }
+                if (!Directory.Exists(folder))
+                {
+                    Directory.CreateDirectory(folder);
+                }
+            }
+            catch { }
         }
 
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
@@ -415,6 +475,10 @@ namespace InspectionSystem_GenericBase
             _isMonitoring = false; _isUiLoaded = false;
             _camera.StopCapture(); _camera.Dispose();
             _plc.Disconnect(); SaveConfig();
+            lock (_rawFrameLock)
+            {
+                _latestRawFrame?.Dispose();
+            }
         }
         private void AppendDailyLog(InspectionResult result)
         {
@@ -548,6 +612,12 @@ namespace InspectionSystem_GenericBase
             {
                 frame.Dispose();
                 return;
+            }
+
+            lock (_rawFrameLock)
+            {
+                _latestRawFrame?.Dispose();
+                _latestRawFrame = frame.Clone();
             }
 
             _camFrameCount++;
@@ -1211,8 +1281,6 @@ namespace InspectionSystem_GenericBase
                 _saveRoi = new CvRect(GetI("SaveRoiX", _saveRoi.X), GetI("SaveRoiY", _saveRoi.Y), GetI("SaveRoiW", _saveRoi.Width), GetI("SaveRoiH", _saveRoi.Height));
                 _logKeepDays = GetI("LogKeepDays", _logKeepDays);
 
-                if (_cmbTriggerMode != null) _cmbTriggerMode.SelectedIndex = _triggerOnBright ? 0 : 1;
-                if (_cmbSaveMode != null) _cmbSaveMode.SelectedIndex = _saveMode;
                 if (_nudTriggerThreshold != null) _nudTriggerThreshold.Value = (decimal)_triggerThreshold;
                 if (_nudStabilityDuration != null) _nudStabilityDuration.Value = _stabilityDurationMs;
                 if (_nudPlcDelayMs != null) _nudPlcDelayMs.Value = _plcDelayMs;

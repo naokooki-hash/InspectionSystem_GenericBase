@@ -25,7 +25,10 @@ namespace InspectionSystem_GenericBase
         private CheckBox chkAutoPlay;
         private System.Windows.Forms.Timer autoPlayTimer;
         private PictureBox pbDebugView;
-
+        private TextBox txtTestImageSaveFolder;
+        private Button btnBrowseSaveFolder;
+        private TabPage tabImageCapture;
+        private Button btnCaptureTestImage;
         // --- TAB 2: 検査パラメータ (Inspection Parameters) ---
         private TabPage tabInspection;
         // Jig settings
@@ -124,16 +127,19 @@ namespace InspectionSystem_GenericBase
             tabInspection = new TabPage("検査パラメータ (Inspection)") { AutoScroll = true };
             tabCameraSystem = new TabPage("カメラ・システム (System)") { AutoScroll = true };
             tabPlcLogs = new TabPage("PLC・ログ (PLC & Comms)") { AutoScroll = true };
+            tabImageCapture = new TabPage("画像収集 (Capture)") { AutoScroll = true };
 
             _tabSettings.TabPages.Add(tabTestMode);
             _tabSettings.TabPages.Add(tabInspection);
             _tabSettings.TabPages.Add(tabCameraSystem);
             _tabSettings.TabPages.Add(tabPlcLogs);
+            _tabSettings.TabPages.Add(tabImageCapture);
 
             BuildTestModeTab();
             BuildInspectionTab();
             BuildCameraSystemTab();
             BuildPlcLogsTab();
+            BuildImageCaptureTab();
 
             // Bottom Dialog Buttons
             Button btnOk = new Button { Text = "OK (適用・保存)", Location = new Point(430, 885), Size = new Size(110, 35), BackColor = Color.LightGreen, DialogResult = DialogResult.OK };
@@ -188,6 +194,49 @@ namespace InspectionSystem_GenericBase
 
             pbDebugView = new PictureBox { Location = new Point(15, 25), Size = new Size(560, 455), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black, BorderStyle = BorderStyle.FixedSingle };
             gpView.Controls.Add(pbDebugView);
+        }
+
+        private void BuildImageCaptureTab()
+        {
+            int y = 20;
+            int lw = 150;
+
+            GroupBox gpCapture = new GroupBox { Text = "テスト画像収集トリガー (Test Image Collector)", Location = new Point(15, y), Size = new Size(590, 240) };
+            tabImageCapture.Controls.Add(gpCapture);
+
+            y = 35;
+            btnCaptureTestImage = new Button
+            {
+                Text = "📷 テスト画像を撮影・保存",
+                Location = new Point(15, y),
+                Size = new Size(560, 60),
+                BackColor = Color.DodgerBlue,
+                ForeColor = Color.White,
+                Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold)
+            };
+            btnCaptureTestImage.Click += (s, e) => {
+                _mainForm.CaptureTestImage();
+            };
+            gpCapture.Controls.Add(btnCaptureTestImage);
+            y += 85;
+
+            gpCapture.Controls.Add(new Label { Text = "撮像画像保存先フォルダ:", Location = new Point(15, y + 2), Size = new Size(lw, 20) });
+            txtTestImageSaveFolder = new TextBox { Location = new Point(15 + lw, y), Size = new Size(290, 25) };
+            gpCapture.Controls.Add(txtTestImageSaveFolder);
+
+            btnBrowseSaveFolder = new Button { Text = "参照...", Location = new Point(15 + lw + 300, y - 2), Size = new Size(90, 28) };
+            btnBrowseSaveFolder.Click += (s, e) => {
+                using (var fbd = new FolderBrowserDialog())
+                {
+                    fbd.SelectedPath = txtTestImageSaveFolder.Text;
+                    fbd.Description = "テスト画像の撮影・保存先フォルダを選択してください";
+                    if (fbd.ShowDialog() == DialogResult.OK)
+                    {
+                        txtTestImageSaveFolder.Text = fbd.SelectedPath;
+                    }
+                }
+            };
+            gpCapture.Controls.Add(btnBrowseSaveFolder);
         }
 
         private void BuildInspectionTab()
@@ -477,6 +526,7 @@ namespace InspectionSystem_GenericBase
 
         private void LoadCurrentSettings()
         {
+            txtTestImageSaveFolder.Text = _appSettings.TestImageSaveFolder;
             // Camera configs
             numExposureTime.Value = (decimal)_appSettings.Cam.ExposureTime;
             cmbSaveMode.SelectedIndex = _mainForm._saveMode;
@@ -715,6 +765,7 @@ namespace InspectionSystem_GenericBase
             _appSettings.Cam.OkDeviceAddress = (int)numPlcOk.Value;
             _appSettings.Cam.NgDeviceAddress = (int)numPlcNg.Value;
             _appSettings.Cam.WriteDeviceAddress = (int)numPlcOk.Value;
+            _appSettings.TestImageSaveFolder = txtTestImageSaveFolder.Text;
             _appSettings.Save();
 
             // 2. MainForm parameters update
