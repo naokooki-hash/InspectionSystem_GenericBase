@@ -580,6 +580,37 @@ namespace InspectionSystem_GenericBase
                 IsOk = (resultCode == 1)
             };
 
+            bool isBtmDetected = (_btmCenter.X != 0);
+            bool featuresMissing = !isBtmDetected;
+            if (EnableOuterTiltCheck && !_tiltEdgesFound && !EnableHoleCheck) featuresMissing = true;
+            if (EnableHoleCheck && _detectedHoles.Count < 2 && !EnableOuterTiltCheck) featuresMissing = true;
+            if (EnableOuterTiltCheck && EnableHoleCheck && !_tiltEdgesFound && _detectedHoles.Count < 2) featuresMissing = true;
+
+            if (featuresMissing)
+            {
+                result.AlignmentStatus = 3; // 検出エラー
+                result.IsAlignmentOk = false;
+            }
+            else
+            {
+                bool finalOk = false;
+                if (EnableOuterTiltCheck && EnableHoleCheck) { finalOk = (_isOuterOffsetOk && _isOuterAngleOk) || (_isHoleOffsetOk && _isHoleAngleOk); }
+                else if (EnableOuterTiltCheck) { finalOk = (_isOuterOffsetOk && _isOuterAngleOk); }
+                else if (EnableHoleCheck) { finalOk = (_isHoleOffsetOk && _isHoleAngleOk); }
+                else { finalOk = true; }
+
+                if (finalOk)
+                {
+                    result.AlignmentStatus = 1; // OK
+                    result.IsAlignmentOk = true;
+                }
+                else
+                {
+                    result.AlignmentStatus = 2; // NG
+                    result.IsAlignmentOk = false;
+                }
+            }
+
             if (resultCode == 1) result.ResultText = "OK";
             else if (resultCode == 2) result.ResultText = "NG";
             else result.ResultText = "ERR";
@@ -600,7 +631,7 @@ namespace InspectionSystem_GenericBase
                 }
             }
 
-            bool isBtmDetected = (_btmCenter.X != 0);
+            isBtmDetected = (_btmCenter.X != 0);
             if (!isBtmDetected)
             {
                 reasons.Add("下部基準線が検出できませんでした。");
@@ -672,13 +703,20 @@ namespace InspectionSystem_GenericBase
                     using (Graphics g = Graphics.FromImage(bmp))
                     {
                         using (Font font = new Font("MS UI Gothic", 24, FontStyle.Bold))
+                        using (Font subFont = new Font("MS UI Gothic", 18, FontStyle.Bold))
                         using (Font reasonFont = new Font("MS UI Gothic", 16, FontStyle.Bold))
                         using (SolidBrush bgBrush = new SolidBrush(Color.FromArgb(180, Color.Black)))
                         {
-                            g.FillRectangle(bgBrush, new Rectangle(10, 10, 600, 50 + (reasons.Count * 30)));
-                            g.DrawString("【NG 判定理由】", font, Brushes.Red, new PointF(15, 15));
+                            g.FillRectangle(bgBrush, new Rectangle(10, 10, 600, 80 + (reasons.Count * 30)));
+                            g.DrawString("【アライメント判定】", font, Brushes.White, new PointF(15, 15));
+                            
+                            string alignStr = result.AlignmentStatus == 1 ? "OK" : (result.AlignmentStatus == 2 ? "NG(許容外)" : "検出エラー");
+                            Brush alignBrush = result.AlignmentStatus == 1 ? Brushes.Lime : (result.AlignmentStatus == 2 ? Brushes.Red : Brushes.Orange);
+                            g.DrawString(alignStr, font, alignBrush, new PointF(320, 15));
 
-                            int yOffset = 50;
+                            g.DrawString("【NG 判定理由】", subFont, Brushes.Red, new PointF(15, 55));
+
+                            int yOffset = 85;
                             foreach (var r in reasons)
                             {
                                 g.DrawString("・" + r, reasonFont, Brushes.Yellow, new PointF(20, 15 + yOffset));

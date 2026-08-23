@@ -37,7 +37,7 @@ namespace InspectionSystem_GenericBase
         private Label _lblStatus = null!;
         private Label _lblBrightness = null!;
         private Label _lblFps = null!;
-        private Label _lblBigResult = null!;
+        private Label _lblBigResult = null!, _lblAlignmentStatus = null!;
         private Label _lblTotal = null!, _lblOk = null!, _lblNg = null!, _lblCurrentHoleDistPx = null!;
 
         private CheckBox _chkShowOverlay = null!, _chkEnableJigCheck = null!;
@@ -279,7 +279,10 @@ namespace InspectionSystem_GenericBase
             _chkShowOverlay = new CheckBox { Text = "計測パラメータを表示する", Location = new Point(10, y), AutoSize = true, Checked = true };
             tab.Controls.Add(_chkShowOverlay); y += 30;
 
-            _lblBigResult = new Label { Text = "STOPPED", Location = new Point(10, y), Size = new Size(540, 80), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 24, FontStyle.Bold), BackColor = Color.DarkGray };
+            _lblAlignmentStatus = new Label { Text = "ALIGNMENT: STOPPED", Location = new Point(10, y), Size = new Size(540, 50), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 18, FontStyle.Bold), BackColor = Color.DarkGray, ForeColor = Color.White };
+            tab.Controls.Add(_lblAlignmentStatus); y += 60;
+
+            _lblBigResult = new Label { Text = "TOTAL: STOPPED", Location = new Point(10, y), Size = new Size(540, 80), TextAlign = ContentAlignment.MiddleCenter, Font = new Font(this.Font.FontFamily, 24, FontStyle.Bold), BackColor = Color.DarkGray, ForeColor = Color.White };
             tab.Controls.Add(_lblBigResult); y += 95;
 
             GroupBox gp = new GroupBox { Text = "生産カウンター", Location = new Point(10, y), Size = new Size(540, 110) };
@@ -520,7 +523,6 @@ namespace InspectionSystem_GenericBase
             _camera.StopCapture(); _camera.Dispose();
             _plc.Disconnect(); SaveConfig();
         }
-
         private void AppendDailyLog(InspectionResult result)
         {
             try
@@ -536,24 +538,49 @@ namespace InspectionSystem_GenericBase
                     if (isNewFile)
                     {
                         var measurementKeys = result.Measurements.Keys.ToList();
-                        string header = "日時,総合判定,不合格理由(結合文字列)," + string.Join(",", measurementKeys);
+                        string header = "日時,総合判定,アライメント判定,不合格理由(結合文字列)," + string.Join(",", measurementKeys);
                         sw.WriteLine(header);
                     }
 
                     string resStr = result.IsOk ? "OK" : "NG";
+                    string alignStr = result.AlignmentStatus == 1 ? "OK" : (result.AlignmentStatus == 2 ? "NG(許容外)" : "検出エラー");
                     string reasons = result.FailureReasons.Count > 0 ? "\"" + string.Join(" | ", result.FailureReasons).Replace("\"", "\"\"") + "\"" : "";
 
                     var measurementValues = result.Measurements.Values.Select(v => v.ToString("F3")).ToList();
 
-                    string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff},{resStr},{reasons}," + string.Join(",", measurementValues);
+                    string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff},{resStr},{alignStr},{reasons}," + string.Join(",", measurementValues);
                     sw.WriteLine(line);
                 }
             }
             catch { }
         }
 
-        private void RestoreDailyCounter() { try { string logFile = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd"), "InspectionLog.csv"); if (File.Exists(logFile)) { var lines = File.ReadAllLines(logFile).Where(l => !string.IsNullOrWhiteSpace(l)).ToList(); if (lines.Count > 1) { var cols = lines.Last().Split(','); if (cols.Length >= 5) { int.TryParse(cols[2], out _totalCount); int.TryParse(cols[3], out _okCount); int.TryParse(cols[4], out _ngCount); } } } SafeInvoke(() => UpdateCounterDisplay()); } catch { } }
-
+        private void RestoreDailyCounter()
+        {
+            try
+            {
+                string logFile = Path.Combine(_logDirPath, DateTime.Now.ToString("yyyyMMdd"), "InspectionLog.csv");
+                if (File.Exists(logFile))
+                {
+                    var lines = File.ReadAllLines(logFile).Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+                    _totalCount = 0;
+                    _okCount = 0;
+                    _ngCount = 0;
+                    for (int i = 1; i < lines.Count; i++) // Skip header
+                    {
+                        var cols = lines[i].Split(',');
+                        if (cols.Length > 1)
+                        {
+                            _totalCount++;
+                            if (cols[1].Trim() == "OK") _okCount++;
+                            else _ngCount++;
+                        }
+                    }
+                }
+                SafeInvoke(() => UpdateCounterDisplay());
+            }
+            catch { }
+        }
         private void DeleteOldLogs() { if (_logKeepDays <= 0) return; try { if (!Directory.Exists(_logDirPath)) return; DateTime thresholdDate = DateTime.Now.Date.AddDays(-_logKeepDays); var dirs = Directory.GetDirectories(_logDirPath); foreach (var dir in dirs) { string dirName = new DirectoryInfo(dir).Name; if (DateTime.TryParseExact(dirName, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out DateTime dirDate)) { if (dirDate.Date < thresholdDate) Directory.Delete(dir, true); } } } catch { } }
 
         private async Task MonitorPlcTriggerAsync()
@@ -902,6 +929,10 @@ namespace InspectionSystem_GenericBase
                 _lblBigResult.Text = text;
                 _lblBigResult.BackColor = color;
             }
+            if (_lblAlignmentStatus != null && !_lblAlignmentStatus.IsDisposed) {
+                _lblAlignmentStatus.Text = "アライメント: " + text;
+                _lblAlignmentStatus.BackColor = color;
+            }
         }
 
         private void ProcessInspectionResult(InspectionResult result, double brightness)
@@ -1065,9 +1096,37 @@ namespace InspectionSystem_GenericBase
 
         private void UpdateResultDisplay(InspectionResult result, bool manual, double brightness = 0.0)
         {
-            if (_lblBigResult == null || _lblBigResult.IsDisposed) return;
-            _lblBigResult.Text = (result.IsOk ? "OK" : "NG");
-            _lblBigResult.BackColor = result.IsOk ? Color.LimeGreen : Color.Red;
+            if (_lblBigResult != null && !_lblBigResult.IsDisposed)
+            {
+                _lblBigResult.Text = result.IsOk ? "総合判定: OK" : "総合判定: NG";
+                _lblBigResult.BackColor = result.IsOk ? Color.LimeGreen : Color.Red;
+            }
+
+            if (_lblAlignmentStatus != null && !_lblAlignmentStatus.IsDisposed)
+            {
+                string alignText;
+                Color alignColor;
+
+                if (result.AlignmentStatus == 1)
+                {
+                    alignText = "アライメント: OK";
+                    alignColor = Color.LimeGreen;
+                }
+                else if (result.AlignmentStatus == 2)
+                {
+                    alignText = "アライメント: NG (許容外)";
+                    alignColor = Color.Red;
+                }
+                else
+                {
+                    alignText = "アライメント: 検出エラー";
+                    alignColor = Color.OrangeRed;
+                }
+
+                _lblAlignmentStatus.Text = alignText;
+                _lblAlignmentStatus.BackColor = alignColor;
+            }
+
             if (!manual)
             {
                 _totalCount++;

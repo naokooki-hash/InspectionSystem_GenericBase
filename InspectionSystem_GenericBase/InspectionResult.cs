@@ -20,6 +20,16 @@ namespace InspectionSystem_GenericBase
         public string ResultText { get; set; } = "ERR";
 
         /// <summary>
+        /// アライメント判定成否
+        /// </summary>
+        public bool IsAlignmentOk { get; set; }
+
+        /// <summary>
+        /// アライメント詳細ステータス (1: OK, 2: NG(許容値超え), 3: 検出エラー)
+        /// </summary>
+        public int AlignmentStatus { get; set; } = 3;
+
+        /// <summary>
         /// NG判定またはエラー時の詳細理由リスト（日本語）
         /// </summary>
         public List<string> FailureReasons { get; set; } = new List<string>();

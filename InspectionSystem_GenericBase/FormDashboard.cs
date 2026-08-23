@@ -47,6 +47,7 @@ namespace InspectionSystem_GenericBase
             _plotTact = new FormsPlot { Dock = DockStyle.Fill };
             _plotTact.Plot.Axes.Title.Label.Text = "タクトタイム推移";
             _plotTact.Plot.Axes.Left.Label.Text = "サイクルタイム (秒)";
+            ConfigurePlotFonts(_plotTact);
             tab.Controls.Add(_plotTact);
         }
 
@@ -62,10 +63,12 @@ namespace InspectionSystem_GenericBase
             _plotQualityTrend = new FormsPlot { Dock = DockStyle.Fill };
             _plotQualityTrend.Plot.Axes.Title.Label.Text = $"{_analyzer.TargetValueName} トレンド";
             _plotQualityTrend.Plot.Axes.Left.Label.Text = $"{_analyzer.TargetValueName} ({_analyzer.TargetValueUnit})";
+            ConfigurePlotFonts(_plotQualityTrend);
             tlp.Controls.Add(_plotQualityTrend, 0, 0);
 
             _plotQualityHist = new FormsPlot { Dock = DockStyle.Fill };
             _plotQualityHist.Plot.Axes.Title.Label.Text = $"{_analyzer.TargetValueName} 分布";
+            ConfigurePlotFonts(_plotQualityHist);
             tlp.Controls.Add(_plotQualityHist, 1, 0);
 
             tab.Controls.Add(tlp);
@@ -78,7 +81,18 @@ namespace InspectionSystem_GenericBase
 
             _plotEnv = new FormsPlot { Dock = DockStyle.Fill };
             _plotEnv.Plot.Axes.Title.Label.Text = $"{_analyzer.EnvValueName} 分布";
+            ConfigurePlotFonts(_plotEnv);
             tab.Controls.Add(_plotEnv);
+        }
+
+        private void ConfigurePlotFonts(FormsPlot plot)
+        {
+            string jpnFont = Fonts.Detect("日本語");
+            if (!string.IsNullOrEmpty(jpnFont))
+            {
+                plot.Plot.Font.Set(jpnFont);
+            }
+            plot.Plot.Font.Automatic();
         }
 
         public void UpdateCharts()
