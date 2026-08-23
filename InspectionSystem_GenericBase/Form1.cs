@@ -50,8 +50,26 @@ namespace InspectionSystem_GenericBase
         private bool _requestErrorTest = false;
         private bool _requestOkTest = false; // ★テスト用: 強制OKフラグ
 
+        private bool _isAdminMode = false;
+        private Button _btnAdminLogin = null!;
+
         private NumericUpDown _nudTriggerThreshold = null!, _nudStabilityDuration = null!, _nudResetThreshold = null!;
         private NumericUpDown _nudRoiX = null!, _nudRoiY = null!, _nudRoiW = null!, _nudRoiH = null!;
+
+        // Test mode variables
+        private GroupBox _gbTestMode = null!;
+        private CheckBox _chkTestModeEnable = null!;
+        private Button _btnSelectTestFolder = null!;
+        private Button _btnPrevImage = null!;
+        private Button _btnNextImage = null!;
+        private CheckBox _chkAutoPlay = null!;
+        private Label _lblTestImageInfo = null!;
+
+        private bool _isTestModeEnabled = false;
+        private string _testImagesPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestImages");
+        private List<string> _testImageFiles = new List<string>();
+        private int _currentTestImageIndex = 0;
+        private System.Windows.Forms.Timer _autoPlayTimer = null!;
         private NumericUpDown _nudSaveRoiX = null!, _nudSaveRoiY = null!, _nudSaveRoiW = null!, _nudSaveRoiH = null!;
 
         private NumericUpDown _nudLogKeepDays = null!;
@@ -147,6 +165,7 @@ namespace InspectionSystem_GenericBase
             _plc.OnLog += (msg, isErr) => AppendLog(msg, isErr);
 
             LoadConfig();
+            UpdateUiForAdminMode();
 
             this.Load += Form1_Load;
             this.FormClosing += Form1_FormClosing;
@@ -198,6 +217,54 @@ namespace InspectionSystem_GenericBase
             TabPage t3 = new TabPage("検査設定 (Inspection)") { AutoScroll = true }; InitializeInspectionTab(t3); _tabControl.TabPages.Add(t3);
             TabPage t4 = new TabPage("画像確認 (Debug)") { AutoScroll = true }; InitializeDebugTab(t4); _tabControl.TabPages.Add(t4);
             TabPage t5 = new TabPage("PLC設定 (PLC Comms)") { AutoScroll = true }; InitializePlcCommsTab(t5); _tabControl.TabPages.Add(t5);
+
+            _btnAdminLogin = new Button { Text = "管理者ログイン", Location = new Point(tabX + 430, 10), Size = new Size(140, 25) };
+            _btnAdminLogin.Click += BtnAdminLogin_Click;
+            this.Controls.Add(_btnAdminLogin);
+            _btnAdminLogin.BringToFront();
+        }
+
+        private void BtnAdminLogin_Click(object? sender, EventArgs e)
+        {
+            if (_isAdminMode)
+            {
+                _isAdminMode = false;
+                _btnAdminLogin.Text = "管理者ログイン";
+                UpdateUiForAdminMode();
+                return;
+            }
+
+            using (var prompt = new Form())
+            {
+                prompt.Width = 300;
+                prompt.Height = 150;
+                prompt.FormBorderStyle = FormBorderStyle.FixedDialog;
+                prompt.Text = "管理者ログイン";
+                prompt.StartPosition = FormStartPosition.CenterScreen;
+
+                Label textLabel = new Label() { Left = 50, Top=20, Text="パスワード:" };
+                TextBox textBox = new TextBox() { Left = 50, Top=50, Width=180, PasswordChar='*' };
+                Button confirmation = new Button() { Text = "OK", Left=130, Width=100, Top=80, DialogResult = DialogResult.OK };
+
+                prompt.Controls.Add(textBox);
+                prompt.Controls.Add(confirmation);
+                prompt.Controls.Add(textLabel);
+                prompt.AcceptButton = confirmation;
+
+                if (prompt.ShowDialog() == DialogResult.OK)
+                {
+                    if (textBox.Text == _appSettings.AdminPassword)
+                    {
+                        _isAdminMode = true;
+                        _btnAdminLogin.Text = "管理者ログアウト";
+                        UpdateUiForAdminMode();
+                    }
+                    else
+                    {
+                        MessageBox.Show("パスワードが違います。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
         }
 
         private void InitializePlcCommsTab(TabPage tab)
@@ -319,6 +386,219 @@ namespace InspectionSystem_GenericBase
                 _requestErrorTest = false;
             };
             tab.Controls.Add(btnTest); y += 40;
+
+            _gbTestMode = new GroupBox { Text = "テストモード操作パネル (Test Mode)", Location = new Point(10, y), Size = new Size(540, 120), Enabled = false };
+
+            _chkTestModeEnable = new CheckBox { Text = "テストモード有効化", Location = new Point(10, 25), AutoSize = true };
+            _chkTestModeEnable.CheckedChanged += ChkTestModeEnable_CheckedChanged;
+
+            _btnSelectTestFolder = new Button { Text = "フォルダ選択", Location = new Point(160, 20), Size = new Size(100, 30) };
+            _btnSelectTestFolder.Click += BtnSelectTestFolder_Click;
+
+            _lblTestImageInfo = new Label { Text = "画像: 0 / 0", Location = new Point(270, 25), AutoSize = true };
+
+            _btnPrevImage = new Button { Text = "◀ 前の画像", Location = new Point(10, 60), Size = new Size(100, 40) };
+            _btnPrevImage.Click += (s, e) => { LoadAndInspectTestImage(-1); };
+
+            _btnNextImage = new Button { Text = "次の画像 ▶", Location = new Point(120, 60), Size = new Size(100, 40) };
+            _btnNextImage.Click += (s, e) => { LoadAndInspectTestImage(1); };
+
+            _chkAutoPlay = new CheckBox { Text = "自動送り", Location = new Point(240, 70), AutoSize = true };
+            _chkAutoPlay.CheckedChanged += ChkAutoPlay_CheckedChanged;
+
+            _gbTestMode.Controls.Add(_chkTestModeEnable);
+            _gbTestMode.Controls.Add(_btnSelectTestFolder);
+            _gbTestMode.Controls.Add(_lblTestImageInfo);
+            _gbTestMode.Controls.Add(_btnPrevImage);
+            _gbTestMode.Controls.Add(_btnNextImage);
+            _gbTestMode.Controls.Add(_chkAutoPlay);
+
+            tab.Controls.Add(_gbTestMode); y += 130;
+
+            _autoPlayTimer = new System.Windows.Forms.Timer { Interval = 1500 }; // 1.5 seconds default
+            _autoPlayTimer.Tick += (s, e) => { LoadAndInspectTestImage(1); };
+        }
+
+        private void UpdateUiForAdminMode()
+        {
+            if (_tabControl != null && _tabControl.TabPages.Count >= 5)
+            {
+                // Disable/Enable specific tabs or controls based on admin mode
+                foreach (Control ctrl in _tabControl.TabPages[1].Controls) ctrl.Enabled = _isAdminMode;
+                foreach (Control ctrl in _tabControl.TabPages[2].Controls) ctrl.Enabled = _isAdminMode;
+                foreach (Control ctrl in _tabControl.TabPages[4].Controls) ctrl.Enabled = _isAdminMode;
+            }
+            if (_gbTestMode != null)
+            {
+                _gbTestMode.Enabled = _isAdminMode;
+                // Automatically turn off test mode if leaving admin mode to be safe
+                if (!_isAdminMode && _chkTestModeEnable.Checked)
+                {
+                    _chkTestModeEnable.Checked = false;
+                }
+            }
+        }
+
+        private void ChkTestModeEnable_CheckedChanged(object? sender, EventArgs e)
+        {
+            _isTestModeEnabled = _chkTestModeEnable.Checked;
+            if (_isTestModeEnabled)
+            {
+                if (!Directory.Exists(_testImagesPath))
+                {
+                    Directory.CreateDirectory(_testImagesPath);
+                }
+                LoadTestImageFiles();
+            }
+            else
+            {
+                _chkAutoPlay.Checked = false; // Stop auto-play
+            }
+        }
+
+        private void BtnSelectTestFolder_Click(object? sender, EventArgs e)
+        {
+            using (var fbd = new FolderBrowserDialog())
+            {
+                fbd.SelectedPath = _testImagesPath;
+                fbd.Description = "テスト用画像の入ったフォルダを選択してください";
+                if (fbd.ShowDialog() == DialogResult.OK)
+                {
+                    _testImagesPath = fbd.SelectedPath;
+                    LoadTestImageFiles();
+                }
+            }
+        }
+
+        private void LoadTestImageFiles()
+        {
+            if (Directory.Exists(_testImagesPath))
+            {
+                var extensions = new[] { ".png", ".jpg", ".jpeg", ".bmp" };
+                _testImageFiles = Directory.GetFiles(_testImagesPath)
+                    .Where(file => extensions.Contains(Path.GetExtension(file).ToLower()))
+                    .OrderBy(f => f)
+                    .ToList();
+
+                _currentTestImageIndex = 0;
+                UpdateTestImageInfoLabel();
+            }
+            else
+            {
+                _testImageFiles.Clear();
+                _currentTestImageIndex = 0;
+                UpdateTestImageInfoLabel();
+            }
+        }
+
+        private void UpdateTestImageInfoLabel()
+        {
+            if (_testImageFiles.Count == 0)
+            {
+                _lblTestImageInfo.Text = "画像: 0 / 0";
+            }
+            else
+            {
+                string filename = Path.GetFileName(_testImageFiles[_currentTestImageIndex]);
+                _lblTestImageInfo.Text = $"画像: {_currentTestImageIndex + 1} / {_testImageFiles.Count} ({filename})";
+            }
+        }
+
+        private void ChkAutoPlay_CheckedChanged(object? sender, EventArgs e)
+        {
+            if (_chkAutoPlay.Checked && _isTestModeEnabled && _testImageFiles.Count > 0)
+            {
+                _autoPlayTimer.Start();
+            }
+            else
+            {
+                _autoPlayTimer.Stop();
+            }
+        }
+
+        private void LoadAndInspectTestImage(int step)
+        {
+            if (!_isTestModeEnabled || _testImageFiles.Count == 0) return;
+
+            _currentTestImageIndex += step;
+            if (_currentTestImageIndex < 0) _currentTestImageIndex = _testImageFiles.Count - 1;
+            if (_currentTestImageIndex >= _testImageFiles.Count) _currentTestImageIndex = 0;
+
+            UpdateTestImageInfoLabel();
+
+            string filePath = _testImageFiles[_currentTestImageIndex];
+            try
+            {
+                using (var mat = Cv2.ImRead(filePath, ImreadModes.Color))
+                {
+                    if (!mat.Empty())
+                    {
+                        // Wrap the inspection call similarly to the camera capture event
+                        Task.Run(() => InspectTestImageAsync(mat.Clone()));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"[TestMode] Error reading image {filePath}: {ex.Message}", true);
+            }
+        }
+
+        private void InspectTestImageAsync(Mat frame)
+        {
+            try
+            {
+                DateTime startTime = DateTime.Now;
+
+                // Actually run inspection
+                var res = _inspectionEngine.Inspect(frame);
+
+                _lastInspectionResult?.Dispose();
+                _lastInspectionResult = res;
+
+                // Update UI stats
+                _totalCount++;
+                if (res.IsOk) _okCount++; else _ngCount++;
+
+                // Save image
+                if (_saveMode == 0 || (_saveMode == 1 && res.IsOk) || (_saveMode == 2 && !res.IsOk))
+                {
+                    SaveInspectionImage(res);
+                }
+
+                // Logging
+                double lastAngle = 0;
+                if (res.Measurements.ContainsKey("OuterAngleDeg")) lastAngle = res.Measurements["OuterAngleDeg"];
+                else if (res.Measurements.ContainsKey("HoleAngleDeg")) lastAngle = res.Measurements["HoleAngleDeg"];
+
+                _analyzer.AddRecord(lastAngle, 0, res.IsOk, _logDirPath); // Emulate logging and analysis
+
+                // UI update
+                double elapsedMs = (DateTime.Now - startTime).TotalMilliseconds;
+                SafeInvoke(() => {
+                    UpdateCounterDisplay();
+                    UpdateResultDisplay(res, false, 0);
+
+                    AppendLog($"[TestMode] Inspect {elapsedMs:F1}ms - OK={res.IsOk}", !res.IsOk);
+
+                    if (res.OutputImage != null && !res.OutputImage.Empty())
+                    {
+                        UpdateUIDisplay(res.OutputImage, 0, false);
+                    }
+                    else
+                    {
+                        UpdateUIDisplay(frame, 0, false);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"[TestMode] Inspection Error: {ex.Message}", true);
+            }
+            finally
+            {
+                frame.Dispose();
+            }
         }
 
         private void InitializeSettingsTab(TabPage tab)
@@ -651,7 +931,7 @@ namespace InspectionSystem_GenericBase
         private void Camera_OnFrameCaptured(object? sender, Mat frame)
         {
             if (frame == null || frame.Empty()) return;
-            if (!_isUiLoaded || this.IsDisposed || this.Disposing)
+            if (!_isUiLoaded || this.IsDisposed || this.Disposing || _isTestModeEnabled)
             {
                 frame.Dispose();
                 return;
