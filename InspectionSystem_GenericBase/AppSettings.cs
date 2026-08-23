@@ -17,6 +17,7 @@ namespace InspectionSystem_GenericBase
         public int NgDeviceAddress { get; set; } = 101;    // 不良品結果書き込み先 (M101)
         public int ReadDeviceAddress { get; set; } = 102;  // トリガー信号を読み取る先 (M102)
         public int WriteDeviceAddress { get; set; } = 100; // 互換用
+        public double ExposureTime { get; set; } = 10000; // 露光時間 (us)
     }
 
     public class AppSettings
