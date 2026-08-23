@@ -47,6 +47,7 @@ namespace InspectionSystem_GenericBase
         private bool _isRunning = false;
         private bool _requestErrorTest = false;
         private bool _requestOkTest = false; // ★テスト用: 強制OKフラグ
+        internal int _autoCaptureRemainingCount = 0;
 
 
 
@@ -273,6 +274,47 @@ namespace InspectionSystem_GenericBase
             catch (Exception ex)
             {
                 MessageBox.Show($"画像の保存に失敗しました: {ex.Message}", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                frameToSave?.Dispose();
+            }
+        }
+
+        private void SaveRawTestImageAsync(int remaining)
+        {
+            Mat? frameToSave = null;
+            lock (_rawFrameLock)
+            {
+                if (_latestRawFrame != null && !_latestRawFrame.Empty())
+                {
+                    frameToSave = _latestRawFrame.Clone();
+                }
+            }
+
+            if (frameToSave == null || frameToSave.Empty()) return;
+
+            try
+            {
+                string folder = _appSettings.TestImageSaveFolder;
+                if (string.IsNullOrEmpty(folder))
+                {
+                    folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestImages");
+                }
+                if (!Directory.Exists(folder))
+                {
+                    Directory.CreateDirectory(folder);
+                }
+
+                string filename = $"TestImage_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png";
+                string filepath = Path.Combine(folder, filename);
+
+                frameToSave.SaveImage(filepath);
+                AppendLog($"[自動収集] 画像を保存しました。残り枚数: {remaining} (ファイル名: {filename})");
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"[自動収集エラー] 保存に失敗しました: {ex.Message}", true);
             }
             finally
             {
@@ -575,7 +617,7 @@ namespace InspectionSystem_GenericBase
             AppendLog("PLC接続・監視ループを停止しました。");
         }
 
-        private void AppendLog(string msg, bool isError = false)
+        internal void AppendLog(string msg, bool isError = false)
         {
             SafeInvoke(() => {
                 string time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
@@ -900,6 +942,16 @@ namespace InspectionSystem_GenericBase
 
         private void ProcessInspectionResult(InspectionResult result, double brightness)
         {
+            int remaining = 0;
+            lock (_rawFrameLock)
+            {
+                if (_autoCaptureRemainingCount > 0)
+                {
+                    _autoCaptureRemainingCount--;
+                    remaining = _autoCaptureRemainingCount;
+                    Task.Run(() => SaveRawTestImageAsync(remaining));
+                }
+            }
             var camSettings = _appSettings.Cam;
             bool isOk = result.IsOk;
             AppendLog($"検査完了。結果: {(isOk ? "OK" : "NG")} (D{camSettings.WriteDeviceAddress} に送信)");

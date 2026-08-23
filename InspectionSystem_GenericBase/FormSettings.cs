@@ -29,6 +29,10 @@ namespace InspectionSystem_GenericBase
         private Button btnBrowseSaveFolder;
         private TabPage tabImageCapture;
         private Button btnCaptureTestImage;
+        private NumericUpDown nudAutoCaptureCount;
+        private Button btnStartAutoCapture;
+        private Label lblAutoCaptureStatus;
+        private System.Windows.Forms.Timer autoCapturePollTimer;
         // --- TAB 2: 検査パラメータ (Inspection Parameters) ---
         private TabPage tabInspection;
         // Jig settings
@@ -102,9 +106,15 @@ namespace InspectionSystem_GenericBase
             // Link Form1's debug picturebox reference to settings tab debug picturebox
             _mainForm._pictureBoxDebug = pbDebugView;
 
+            // Setup auto capture status polling timer
+            autoCapturePollTimer = new System.Windows.Forms.Timer { Interval = 200 };
+            autoCapturePollTimer.Tick += (s, e) => { UpdateAutoCaptureStatusLabel(); };
+            autoCapturePollTimer.Start();
+
             // Form closing cleanup
             this.FormClosing += (s, e) => {
                 autoPlayTimer.Stop();
+                autoCapturePollTimer.Stop();
                 _mainForm._pictureBoxDebug = null;
             };
         }
@@ -201,24 +211,24 @@ namespace InspectionSystem_GenericBase
             int y = 20;
             int lw = 150;
 
-            GroupBox gpCapture = new GroupBox { Text = "テスト画像収集トリガー (Test Image Collector)", Location = new Point(15, y), Size = new Size(590, 240) };
+            GroupBox gpCapture = new GroupBox { Text = "テスト画像手動収集トリガー (Manual Image Collector)", Location = new Point(15, y), Size = new Size(590, 200) };
             tabImageCapture.Controls.Add(gpCapture);
 
-            y = 35;
+            y = 30;
             btnCaptureTestImage = new Button
             {
-                Text = "📷 テスト画像を撮影・保存",
+                Text = "📷 テスト画像を撮影・保存 (生画像)",
                 Location = new Point(15, y),
-                Size = new Size(560, 60),
+                Size = new Size(560, 50),
                 BackColor = Color.DodgerBlue,
                 ForeColor = Color.White,
-                Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold)
+                Font = new Font(this.Font.FontFamily, 12, FontStyle.Bold)
             };
             btnCaptureTestImage.Click += (s, e) => {
                 _mainForm.CaptureTestImage();
             };
             gpCapture.Controls.Add(btnCaptureTestImage);
-            y += 85;
+            y += 70;
 
             gpCapture.Controls.Add(new Label { Text = "撮像画像保存先フォルダ:", Location = new Point(15, y + 2), Size = new Size(lw, 20) });
             txtTestImageSaveFolder = new TextBox { Location = new Point(15 + lw, y), Size = new Size(290, 25) };
@@ -237,6 +247,65 @@ namespace InspectionSystem_GenericBase
                 }
             };
             gpCapture.Controls.Add(btnBrowseSaveFolder);
+
+            // Triggered Auto-Capture GroupBox
+            GroupBox gpAuto = new GroupBox { Text = "検査トリガー連動・連続自動収集 (Trigger Sync Auto Capture)", Location = new Point(15, 235), Size = new Size(590, 150) };
+            tabImageCapture.Controls.Add(gpAuto);
+
+            gpAuto.Controls.Add(new Label { Text = "自動収集枚数:", Location = new Point(15, 32), Size = new Size(100, 20) });
+            nudAutoCaptureCount = new NumericUpDown { Location = new Point(120, 30), Size = new Size(90, 25), Minimum = 1, Maximum = 9999, Value = 100 };
+            gpAuto.Controls.Add(nudAutoCaptureCount);
+
+            lblAutoCaptureStatus = new Label { Text = "自動収集: 停止中 (待機)", Location = new Point(230, 32), Size = new Size(330, 20), ForeColor = Color.DarkGray, Font = new Font(this.Font, FontStyle.Bold) };
+            gpAuto.Controls.Add(lblAutoCaptureStatus);
+
+            btnStartAutoCapture = new Button
+            {
+                Text = "▶ 自動収集を開始 (START)",
+                Location = new Point(15, 75),
+                Size = new Size(560, 50),
+                BackColor = Color.LightSkyBlue,
+                Font = new Font(this.Font.FontFamily, 12, FontStyle.Bold)
+            };
+            btnStartAutoCapture.Click += BtnStartAutoCapture_Click;
+            gpAuto.Controls.Add(btnStartAutoCapture);
+        }
+
+        private void BtnStartAutoCapture_Click(object? sender, EventArgs e)
+        {
+            if (_mainForm._autoCaptureRemainingCount > 0)
+            {
+                _mainForm._autoCaptureRemainingCount = 0;
+                _mainForm.AppendLog("[自動収集] 画像収集シーケンスを停止しました。");
+            }
+            else
+            {
+                int count = (int)nudAutoCaptureCount.Value;
+                _mainForm._autoCaptureRemainingCount = count;
+                _mainForm.AppendLog($"[自動収集] 画像収集シーケンスを開始します。目標枚数: {count} 枚");
+            }
+            UpdateAutoCaptureStatusLabel();
+        }
+
+        private void UpdateAutoCaptureStatusLabel()
+        {
+            int remaining = _mainForm._autoCaptureRemainingCount;
+            if (remaining > 0)
+            {
+                lblAutoCaptureStatus.Text = $"自動収集実行中: 残り {remaining} 枚";
+                lblAutoCaptureStatus.ForeColor = Color.Green;
+                btnStartAutoCapture.Text = "■ 自動収集を停止 (STOP)";
+                btnStartAutoCapture.BackColor = Color.Salmon;
+                nudAutoCaptureCount.Enabled = false;
+            }
+            else
+            {
+                lblAutoCaptureStatus.Text = "自動収集: 停止中 (待機)";
+                lblAutoCaptureStatus.ForeColor = Color.DarkGray;
+                btnStartAutoCapture.Text = "▶ 自動収集を開始 (START)";
+                btnStartAutoCapture.BackColor = Color.LightSkyBlue;
+                nudAutoCaptureCount.Enabled = true;
+            }
         }
 
         private void BuildInspectionTab()
