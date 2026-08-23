@@ -267,6 +267,60 @@ namespace InspectionSystem_GenericBase
             }
         }
 
+        private void BtnChangePassword_Click(object? sender, EventArgs e)
+        {
+            using (var prompt = new Form())
+            {
+                prompt.Width = 350;
+                prompt.Height = 220;
+                prompt.FormBorderStyle = FormBorderStyle.FixedDialog;
+                prompt.Text = "管理者パスワードの変更";
+                prompt.StartPosition = FormStartPosition.CenterScreen;
+
+                Label lblCurrent = new Label { Left = 20, Top = 20, Width = 130, Text = "現在のパスワード:" };
+                TextBox txtCurrent = new TextBox { Left = 160, Top = 20, Width = 150, PasswordChar = '*' };
+
+                Label lblNew = new Label { Left = 20, Top = 55, Width = 130, Text = "新しいパスワード:" };
+                TextBox txtNew = new TextBox { Left = 160, Top = 55, Width = 150, PasswordChar = '*' };
+
+                Label lblConfirm = new Label { Left = 20, Top = 90, Width = 130, Text = "新しいパスワード(確認):" };
+                TextBox txtConfirm = new TextBox { Left = 160, Top = 90, Width = 150, PasswordChar = '*' };
+
+                Button btnOk = new Button { Text = "変更", Left = 110, Top = 135, Width = 90, DialogResult = DialogResult.OK };
+                Button btnCancel = new Button { Text = "キャンセル", Left = 210, Top = 135, Width = 90, DialogResult = DialogResult.Cancel };
+
+                prompt.Controls.Add(lblCurrent); prompt.Controls.Add(txtCurrent);
+                prompt.Controls.Add(lblNew); prompt.Controls.Add(txtNew);
+                prompt.Controls.Add(lblConfirm); prompt.Controls.Add(txtConfirm);
+                prompt.Controls.Add(btnOk); prompt.Controls.Add(btnCancel);
+                prompt.AcceptButton = btnOk;
+                prompt.CancelButton = btnCancel;
+
+                if (prompt.ShowDialog() == DialogResult.OK)
+                {
+                    if (txtCurrent.Text != _appSettings.AdminPassword)
+                    {
+                        MessageBox.Show("現在のパスワードが一致しません。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                    if (string.IsNullOrEmpty(txtNew.Text))
+                    {
+                        MessageBox.Show("新しいパスワードを入力してください。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                    if (txtNew.Text != txtConfirm.Text)
+                    {
+                        MessageBox.Show("新しいパスワードと確認用パスワードが一致しません。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    _appSettings.AdminPassword = txtNew.Text;
+                    _appSettings.Save();
+                    MessageBox.Show("管理者パスワードを更新しました。", "通知", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+        }
+
         private void InitializePlcCommsTab(TabPage tab)
         {
             int y = 10, lw = 150, cw = 120, lh = 28;
@@ -613,6 +667,11 @@ namespace InspectionSystem_GenericBase
             cmbAppMode.SelectedIndex = _appSettings.TriggerMode == "Visual" ? 0 : 1;
             cmbAppMode.SelectedIndexChanged += (s, e) => { _appSettings.TriggerMode = cmbAppMode.SelectedIndex == 0 ? "Visual" : "Plc"; _appSettings.Save(); };
             tab.Controls.Add(new Label { Text = "検査トリガー元:", Location = new Point(10, y + 2), Size = new Size(lw, 20) }); tab.Controls.Add(cmbAppMode); y += lh;
+
+            tab.Controls.Add(new Label { Text = "セキュリティ:", Location = new Point(10, y + 2), Size = new Size(lw, 20) });
+            Button btnChangePassword = new Button { Text = "管理者パスワードの変更...", Location = new Point(10 + lw, y), Size = new Size(cw + 50, 25), BackColor = Color.LightGray };
+            btnChangePassword.Click += BtnChangePassword_Click;
+            tab.Controls.Add(btnChangePassword); y += lh;
 
             AddN("PLC Delay(待機) ms:", ref _nudPlcDelayMs, 0, 5000, _plcDelayMs); y += 10;
 
